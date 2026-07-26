@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Croc Transfer
+GenericName=File Transfer
+Comment=Send files securely between your devices
+Exec=/home/map/project-z/new-tempo/file-sharing-2offical/croc/apps/desktop/linux/launch-croc-transfer.sh
+Icon=/home/map/project-z/new-tempo/file-sharing-2offical/croc/apps/desktop/src-tauri/icons/128x128.png
+Terminal=false
+Categories=Network;FileTransfer;
+Keywords=file;transfer;send;receive;croc;
+StartupNotify=true
+StartupWMClass=croc-transfer-desktop

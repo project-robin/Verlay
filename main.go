@@ -10,8 +10,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/schollz/croc/v10/src/cli"
-	"github.com/schollz/croc/v10/src/utils"
+	"github.com/project-robin/Verlay/src/cli"
+	"github.com/project-robin/Verlay/src/utils"
 )
 
 func main() {

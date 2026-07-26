@@ -1,0 +1,120 @@
+package mesh
+
+import (
+	"bytes"
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"io"
+	"net"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/project-robin/Verlay/src/comm"
+)
+
+func TestFramedRelayConnSkipsWaitingRoomKeepalive(t *testing.T) {
+	left, right := net.Pipe()
+	reader := newFramedRelayConn(comm.New(left))
+	writer := comm.New(right)
+	done := make(chan error, 1)
+	go func() {
+		if err := writer.Send([]byte{1}); err != nil {
+			done <- err
+			return
+		}
+		done <- writer.Send([]byte("hello"))
+	}()
+	buffer := make([]byte, 5)
+	if _, err := io.ReadFull(reader, buffer); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(buffer, []byte("hello")) {
+		t.Fatalf("read %q", buffer)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestControlChannelPinsPairedIdentity(t *testing.T) {
+	storeA, storeB, deviceA, deviceB := pairedTestStores(t)
+	payload, _ := json.Marshal(map[string]string{"answer": "pong"})
+	managerB, err := NewControlManager(storeB, func(_ context.Context, peer Device, request ControlRequest) ControlResponse {
+		if peer.DeviceID != deviceA.DeviceID {
+			t.Errorf("handler peer = %s, want %s", peer.DeviceID, deviceA.DeviceID)
+		}
+		if request.Type != "ping" {
+			t.Errorf("request type = %s", request.Type)
+		}
+		return ControlResponse{OK: true, Payload: payload}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	managerA, err := NewControlManager(storeA, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer managerA.Close()
+	defer managerB.Close()
+	clientConnection, serverConnection := net.Pipe()
+	serverReady := make(chan struct{})
+	var serverCalls atomic.Int32
+	managerB.connector = func(ctx context.Context, _, _ string) (net.Conn, error) {
+		if serverCalls.Add(1) == 1 {
+			close(serverReady)
+			return serverConnection, nil
+		}
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	managerA.connector = func(context.Context, string, string) (net.Conn, error) {
+		return clientConnection, nil
+	}
+	managerB.Start()
+	select {
+	case <-serverReady:
+	case <-time.After(2 * time.Second):
+		t.Fatal("control listener did not start")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	response, err := managerA.Send(ctx, deviceB, ControlRequest{RequestID: "request-1", Type: "ping", Payload: json.RawMessage(`{}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !response.OK {
+		t.Fatalf("control response failed: %#v", response)
+	}
+}
+
+func pairedTestStores(t *testing.T) (*Store, *Store, Device, Device) {
+	t.Helper()
+	storeA, err := OpenStore(testPaths(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	storeB, err := OpenStore(testPaths(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	relationship := make([]byte, 32)
+	for i := range relationship {
+		relationship[i] = byte(i + 1)
+	}
+	encoded := base64.RawURLEncoding.EncodeToString(relationship)
+	identityA := storeA.Identity()
+	identityB := storeB.Identity()
+	now := time.Now().UTC()
+	deviceA := Device{DeviceID: identityA.DeviceID, Name: identityA.Name, Platform: identityA.Platform, PublicKey: identityA.PublicKey, RelationshipKey: encoded, Capabilities: []string{"files.request"}, PairedAt: now}
+	deviceB := Device{DeviceID: identityB.DeviceID, Name: identityB.Name, Platform: identityB.Platform, PublicKey: identityB.PublicKey, RelationshipKey: encoded, Capabilities: []string{"files.request"}, PairedAt: now}
+	if err := storeA.PutDevice(deviceB); err != nil {
+		t.Fatal(err)
+	}
+	if err := storeB.PutDevice(deviceA); err != nil {
+		t.Fatal(err)
+	}
+	return storeA, storeB, deviceA, deviceB
+}

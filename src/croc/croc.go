@@ -34,13 +34,13 @@ import (
 	"golang.org/x/term"
 	"golang.org/x/time/rate"
 
-	"github.com/schollz/croc/v10/src/comm"
-	"github.com/schollz/croc/v10/src/compress"
-	"github.com/schollz/croc/v10/src/crypt"
-	"github.com/schollz/croc/v10/src/message"
-	"github.com/schollz/croc/v10/src/models"
-	"github.com/schollz/croc/v10/src/tcp"
-	"github.com/schollz/croc/v10/src/utils"
+	"github.com/project-robin/Verlay/src/comm"
+	"github.com/project-robin/Verlay/src/compress"
+	"github.com/project-robin/Verlay/src/crypt"
+	"github.com/project-robin/Verlay/src/message"
+	"github.com/project-robin/Verlay/src/models"
+	"github.com/project-robin/Verlay/src/tcp"
+	"github.com/project-robin/Verlay/src/utils"
 )
 
 var (

@@ -13,12 +13,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/project-robin/Verlay/src/comm"
+	"github.com/project-robin/Verlay/src/croc"
+	"github.com/project-robin/Verlay/src/models"
+	"github.com/project-robin/Verlay/src/tcp"
+	"github.com/project-robin/Verlay/src/utils"
 	"github.com/schollz/cli/v2"
-	"github.com/schollz/croc/v10/src/comm"
-	"github.com/schollz/croc/v10/src/croc"
-	"github.com/schollz/croc/v10/src/models"
-	"github.com/schollz/croc/v10/src/tcp"
-	"github.com/schollz/croc/v10/src/utils"
 	log "github.com/schollz/logger"
 	"github.com/schollz/pake/v3"
 )

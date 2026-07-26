@@ -5,9 +5,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/schollz/croc/v10/src/message"
-	"github.com/schollz/croc/v10/src/tcp"
-	"github.com/schollz/croc/v10/src/utils"
+	"github.com/project-robin/Verlay/src/message"
+	"github.com/project-robin/Verlay/src/tcp"
+	"github.com/project-robin/Verlay/src/utils"
 	log "github.com/schollz/logger"
 )
 

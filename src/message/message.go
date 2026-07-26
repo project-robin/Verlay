@@ -3,9 +3,9 @@ package message
 import (
 	"encoding/json"
 
-	"github.com/schollz/croc/v10/src/comm"
-	"github.com/schollz/croc/v10/src/compress"
-	"github.com/schollz/croc/v10/src/crypt"
+	"github.com/project-robin/Verlay/src/comm"
+	"github.com/project-robin/Verlay/src/compress"
+	"github.com/project-robin/Verlay/src/crypt"
 	log "github.com/schollz/logger"
 )
 

@@ -1,0 +1,25 @@
+[Unit]
+Description=Verlay secure device daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/mesh daemon run
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ConfigurationDirectory=mesh
+ConfigurationDirectoryMode=0700
+StateDirectory=mesh
+StateDirectoryMode=0700
+RuntimeDirectory=mesh
+RuntimeDirectoryMode=0700
+ReadWritePaths=%h/.local/share/mesh %h/Downloads/Mesh
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,70 @@
+name: Verlay CLI release
+
+on:
+  release:
+    types: [created]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    if: github.repository != 'schollz/croc'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.25.x'
+      - run: go test ./internal/mesh ./cmd/mesh
+
+  build:
+    if: github.repository != 'schollz/croc'
+    needs: test
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            asset: mesh-linux-amd64
+          - goos: linux
+            goarch: arm64
+            asset: mesh-linux-arm64
+          - goos: windows
+            goarch: amd64
+            asset: mesh-windows-amd64.exe
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.25.x'
+      - name: Build static Linux CLI and daemon
+        env:
+          CGO_ENABLED: 0
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: go build -trimpath -ldflags="-s -w -X main.version=${{ github.event.release.tag_name }}" -o "${{ matrix.asset }}" ./cmd/mesh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.asset }}
+          path: ${{ matrix.asset }}
+
+  publish:
+    if: github.event_name == 'release' && github.repository != 'schollz/croc'
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v8
+        with:
+          merge-multiple: true
+      - run: sha256sum mesh-linux-* > verlay-checksums.txt
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            mesh-linux-*
+            verlay-checksums.txt
+            LICENSE
+            NOTICE

@@ -1,0 +1,76 @@
+package main
+
+import (
+	"strings"
+	"testing"
+	"time"
+
+	meshcore "github.com/project-robin/Verlay/internal/mesh"
+)
+
+func TestParseOptionsAnywhere(t *testing.T) {
+	args, options, err := parseOptions([]string{"status", "--json", "--timeout=4s", "--no-input"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(args) != 1 || args[0] != "status" || !options.json || !options.noInput || options.timeout != 4*time.Second {
+		t.Fatalf("unexpected parse result: args=%v options=%#v", args, options)
+	}
+}
+
+func TestParseReceiveAuthorization(t *testing.T) {
+	device, maxBytes, folders, err := parseReceiveAuthorization([]string{"Editor Two", "--folders", "--max-bytes", "4096"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if device != "Editor Two" || maxBytes != 4096 || !folders {
+		t.Fatalf("unexpected authorization: device=%q max=%d folders=%v", device, maxBytes, folders)
+	}
+	if _, _, _, err := parseReceiveAuthorization([]string{"peer", "--max-bytes", "0"}); err == nil {
+		t.Fatal("zero byte policy was accepted")
+	}
+}
+
+func TestParseSendFolderExclusions(t *testing.T) {
+	device, path, exclusions, err := parseSendArgs([]string{"editor-2", "/work/project", "--exclude", "node_modules,.git"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if device != "editor-2" || path != "/work/project" || strings.Join(exclusions, ",") != "node_modules,.git" {
+		t.Fatalf("unexpected send parse: device=%q path=%q exclusions=%v", device, path, exclusions)
+	}
+}
+
+func TestAgentSkillAndSchemaExposeAutomationContract(t *testing.T) {
+	schema := commandSchema()
+	commands, ok := schema["commands"].([]string)
+	if !ok {
+		t.Fatalf("commands schema has type %T", schema["commands"])
+	}
+	joined := strings.Join(commands, "\n")
+	for _, command := range []string{"send DEVICE PATH", "devices list|show|rename|revoke", "skill print"} {
+		if !strings.Contains(joined, command) {
+			t.Fatalf("schema omitted %q", command)
+		}
+	}
+	skill := meshcore.AgentSkill()
+	if !strings.Contains(skill, "Never run them") || !strings.Contains(skill, "mesh --json") {
+		t.Fatal("embedded skill omitted automation or approval guidance")
+	}
+}
+
+func TestParseOptionsRejectsBadTimeout(t *testing.T) {
+	if _, _, err := parseOptions([]string{"--timeout", "never", "status"}); err == nil {
+		t.Fatal("bad timeout was accepted")
+	}
+}
+
+func TestParseOptionsSupportsEndOfOptions(t *testing.T) {
+	args, options, err := parseOptions([]string{"--json", "send", "device", "--", "--timeout"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !options.json || len(args) != 3 || args[2] != "--timeout" {
+		t.Fatalf("unexpected parse result: args=%v options=%#v", args, options)
+	}
+}

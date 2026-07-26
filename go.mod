@@ -1,4 +1,4 @@
-module github.com/schollz/croc/v10
+module github.com/project-robin/Verlay
 
 go 1.25.0
 

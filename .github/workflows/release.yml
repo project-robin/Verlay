@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   prepare-source:
+    if: github.repository == 'schollz/croc'
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
@@ -33,6 +34,7 @@ jobs:
           path: "*.tar.gz"
 
   build:
+    if: github.repository == 'schollz/croc'
     runs-on: ubuntu-24.04
     strategy:
       matrix:
@@ -192,7 +194,7 @@ jobs:
   release:
     needs: [prepare-source, build]
     runs-on: ubuntu-24.04
-    if: github.event_name == 'release'
+    if: github.event_name == 'release' && github.repository == 'schollz/croc'
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v8
