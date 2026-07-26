@@ -4,6 +4,7 @@ import android.content.Intent
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.fail
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -12,8 +13,8 @@ class CrocBenchmarkTest {
     @Test
     fun receiveBenchmarkFile() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
-        val code = InstrumentationRegistry.getArguments().getString("code")
-            ?: error("Pass -e code <croc-code> to the instrumentation runner")
+        val code = InstrumentationRegistry.getArguments().getString("code").orEmpty()
+        assumeTrue("Pass -e code <croc-code> to run the transfer benchmark", code.isNotBlank())
         val context = instrumentation.targetContext
 
         context.startForegroundService(

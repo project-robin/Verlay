@@ -2,6 +2,7 @@ package com.croc.prototype
 
 import android.content.ContentValues
 import android.content.Context
+import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.security.keystore.KeyGenParameterSpec
@@ -28,7 +29,7 @@ data class MeshPairing(
     val status: String,
     val code: String? = null,
     val peerName: String? = null,
-    val fingerprint: String? = null,
+    val verificationCode: String? = null,
     val error: String? = null,
 )
 
@@ -47,7 +48,7 @@ data class MeshTransfer(
 data class MeshSnapshot(
     val availability: MeshAvailability = MeshAvailability.STOPPED,
     val deviceId: String? = null,
-    val message: String = "Mesh is stopped.",
+    val message: String = "Verlay is stopped.",
     val pairings: List<MeshPairing> = emptyList(),
     val devices: List<MeshDevice> = emptyList(),
     val transfers: List<MeshTransfer> = emptyList(),
@@ -84,6 +85,11 @@ object MeshRuntime {
             "XDG_DATA_HOME" to File(context.filesDir, "mesh-data").absolutePath,
             "XDG_RUNTIME_DIR" to File(context.filesDir, "mesh-runtime").absolutePath,
             "TMPDIR" to context.cacheDir.absolutePath,
+            "VERLAY_DEVICE_NAME" to listOf(Build.MANUFACTURER, Build.MODEL)
+                .map(String::trim)
+                .filter(String::isNotEmpty)
+                .distinct()
+                .joinToString(" "),
         )
         if (includeIdentitySeed) {
             environment["MESH_IDENTITY_SEED"] = identitySeed(context)
@@ -94,7 +100,7 @@ object MeshRuntime {
     fun command(context: Context, vararg args: String, timeoutSeconds: Long = 20): MeshCommandResult {
         val binary = binary(context)
         if (!binary.isFile) {
-            return MeshCommandResult(false, errorCode = "engine_missing", errorMessage = "Mesh engine is missing from this build.")
+            return MeshCommandResult(false, errorCode = "engine_missing", errorMessage = "Verlay engine is missing from this build.")
         }
         val process = try {
             ProcessBuilder(listOf(binary.absolutePath, "--json") + args)
@@ -105,17 +111,17 @@ object MeshRuntime {
             return MeshCommandResult(
                 false,
                 errorCode = "engine_start_failed",
-                errorMessage = error.message ?: "Mesh command could not start.",
+                errorMessage = error.message ?: "Verlay command could not start.",
             )
         }
         val finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS)
         if (!finished) {
             process.destroyForcibly()
-            return MeshCommandResult(false, errorCode = "timeout", errorMessage = "Mesh command timed out.")
+            return MeshCommandResult(false, errorCode = "timeout", errorMessage = "Verlay command timed out.")
         }
         val output = process.inputStream.bufferedReader().readText().lineSequence().lastOrNull { it.isNotBlank() }.orEmpty()
         if (output.isBlank()) {
-            return MeshCommandResult(false, errorCode = "empty_response", errorMessage = "Mesh returned no response.")
+            return MeshCommandResult(false, errorCode = "empty_response", errorMessage = "Verlay returned no response.")
         }
         return try {
             val envelope = JSONObject(output)
@@ -126,11 +132,11 @@ object MeshRuntime {
                 MeshCommandResult(
                     false,
                     errorCode = error?.optString("code") ?: "mesh_error",
-                    errorMessage = error?.optString("message") ?: "Mesh command failed.",
+                    errorMessage = error?.optString("message") ?: "Verlay command failed.",
                 )
             }
         } catch (error: Exception) {
-            MeshCommandResult(false, errorCode = "invalid_response", errorMessage = error.message ?: "Invalid mesh response.")
+            MeshCommandResult(false, errorCode = "invalid_response", errorMessage = error.message ?: "Invalid Verlay response.")
         }
     }
 
@@ -163,6 +169,9 @@ object MeshRuntime {
     fun acceptPairing(context: Context, code: String): MeshCommandResult = command(context, "pair", "accept", code)
     fun decidePairing(context: Context, id: String, approve: Boolean): MeshCommandResult =
         command(context, "pair", if (approve) "approve" else "reject", id)
+
+    fun revokeDevice(context: Context, id: String): MeshCommandResult =
+        command(context, "devices", "revoke", id)
 
     fun decideTransfer(context: Context, id: String, approve: Boolean): MeshCommandResult {
         val args = if (approve) {
@@ -309,7 +318,7 @@ private fun JSONArray?.toPairings(): List<MeshPairing> = buildList {
                 status = item.optString("status"),
                 code = item.stringOrNull("code"),
                 peerName = item.stringOrNull("peerName"),
-                fingerprint = item.stringOrNull("peerFingerprint"),
+                verificationCode = item.stringOrNull("verificationCode"),
                 error = item.stringOrNull("errorMessage"),
             ),
         )

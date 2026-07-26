@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -35,6 +36,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
@@ -207,7 +209,17 @@ private fun TransferScreen() {
                 onPairDecision = { pairing, approve ->
                     scope.launch {
                         val result = withContext(Dispatchers.IO) { MeshRuntime.decidePairing(context, pairing.id, approve) }
-                        meshMessage = if (result.ok) "Pairing decision sent." else result.errorMessage
+                        meshMessage = if (result.ok) {
+                            if (approve) "Approved. Waiting for the other device…" else "Pairing rejected."
+                        } else {
+                            result.errorMessage
+                        }
+                    }
+                },
+                onRemoveDevice = { device ->
+                    scope.launch {
+                        val result = withContext(Dispatchers.IO) { MeshRuntime.revokeDevice(context, device.id) }
+                        meshMessage = if (result.ok) "${device.name} was removed." else result.errorMessage
                     }
                 },
                 onSendToDevice = { device ->
@@ -309,7 +321,7 @@ private fun TransferScreen() {
 }
 
 @Composable
-private fun MeshAlphaSection(
+internal fun MeshAlphaSection(
     snapshot: MeshSnapshot,
     pairingCode: String,
     generatedCode: String?,
@@ -320,9 +332,72 @@ private fun MeshAlphaSection(
     onCreatePairing: () -> Unit,
     onAcceptPairing: () -> Unit,
     onPairDecision: (MeshPairing, Boolean) -> Unit,
+    onRemoveDevice: (MeshDevice) -> Unit,
     onSendToDevice: (MeshDevice) -> Unit,
     onTransferDecision: (MeshTransfer, Boolean) -> Unit,
 ) {
+    val pendingPairing = snapshot.pairings.firstOrNull { it.status == "pending_approval" }
+    var deviceToRemove by remember { mutableStateOf<MeshDevice?>(null) }
+
+    pendingPairing?.let { pairing ->
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("Verify new device") },
+            text = {
+                Column {
+                    Text("${pairing.peerName ?: "New device"} wants to pair with this phone.")
+                    Text(
+                        pairing.verificationCode ?: "Update Verlay on both devices to verify this pairing.",
+                        modifier = Modifier.padding(top = 14.dp),
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        "Ask the other device to show its verification code. Approve only if both codes are identical.",
+                        modifier = Modifier.padding(top = 10.dp),
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { onPairDecision(pairing, true) },
+                    enabled = pairing.verificationCode != null,
+                ) {
+                    Text("Codes match")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { onPairDecision(pairing, false) }) {
+                    Text("Reject")
+                }
+            },
+        )
+    }
+
+    deviceToRemove?.let { device ->
+        AlertDialog(
+            onDismissRequest = { deviceToRemove = null },
+            title = { Text("Remove ${device.name}?") },
+            text = {
+                Text(
+                    "This phone will stop trusting this device. Remove this phone on the other device too if you want both lists cleared. You can pair again later.",
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        deviceToRemove = null
+                        onRemoveDevice(device)
+                    },
+                ) {
+                    Text("Remove device")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deviceToRemove = null }) { Text("Cancel") }
+            },
+        )
+    }
+
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(18.dp)) {
             Text("Your Verlay devices", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
@@ -359,22 +434,6 @@ private fun MeshAlphaSection(
                     Text("Accept code")
                 }
 
-                snapshot.pairings.filter { it.status == "pending_approval" }.forEach { pairing ->
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
-                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-                    ) {
-                        Column(Modifier.padding(14.dp)) {
-                            Text(pairing.peerName ?: "New device", fontWeight = FontWeight.Bold)
-                            Text(pairing.fingerprint ?: "No fingerprint", modifier = Modifier.padding(top = 4.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 10.dp)) {
-                                Button(onClick = { onPairDecision(pairing, true) }) { Text("Approve") }
-                                OutlinedButton(onClick = { onPairDecision(pairing, false) }) { Text("Reject") }
-                            }
-                        }
-                    }
-                }
-
                 if (snapshot.devices.isEmpty()) {
                     snapshot.pairings.lastOrNull { it.status == "failed" }?.let { pairing ->
                         Card(
@@ -400,15 +459,18 @@ private fun MeshAlphaSection(
                     HorizontalDivider(Modifier.padding(vertical = 18.dp))
                     Text("Paired devices", style = MaterialTheme.typography.titleMedium)
                     snapshot.devices.forEach { device ->
-                        Row(
+                        Column(
                             modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
-                            Column(Modifier.weight(1f)) {
-                                Text(device.name, fontWeight = FontWeight.Medium)
-                                Text(device.platform, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(device.name, fontWeight = FontWeight.Medium)
+                            Text(device.platform, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.padding(top = 6.dp),
+                            ) {
+                                OutlinedButton(onClick = { onSendToDevice(device) }) { Text("Send file") }
+                                TextButton(onClick = { deviceToRemove = device }) { Text("Remove") }
                             }
-                            OutlinedButton(onClick = { onSendToDevice(device) }) { Text("Send file") }
                         }
                     }
                 }

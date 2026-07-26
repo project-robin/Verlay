@@ -67,3 +67,25 @@ jobs:
             echo "Error: croc-linux-amd64 is a dynamic executable."
             exit 1
           fi
+
+  windows-bootstrap:
+    name: Windows bootstrap
+    runs-on: windows-2025
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.26.x'
+
+      - name: Install and verify Verlay
+        shell: pwsh
+        run: |
+          $installRoot = Join-Path $env:RUNNER_TEMP "Verlay"
+          $skillHome = Join-Path $env:RUNNER_TEMP "skills"
+          ./scripts/bootstrap-agent.ps1 -InstallRoot $installRoot -SkillHome $skillHome -NoStart
+          & "$installRoot/bin/verlay.exe" --json schema
+          if (-not (Test-Path "$installRoot/bin/verlayd.exe")) { throw "verlayd.exe was not installed" }
+          if (-not (Test-Path "$skillHome/verlay/SKILL.md")) { throw "Verlay Agent Skill was not installed" }

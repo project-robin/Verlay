@@ -38,8 +38,11 @@ func TestPairingCreatesMatchingPersistentTrust(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	waitForPairingStatus(t, managerA, created.PairingID, "pending_approval")
-	waitForPairingStatus(t, managerB, accepted.PairingID, "pending_approval")
+	pendingA := waitForPairingStatus(t, managerA, created.PairingID, "pending_approval")
+	pendingB := waitForPairingStatus(t, managerB, accepted.PairingID, "pending_approval")
+	if pendingA.VerificationCode == "" || pendingA.VerificationCode != pendingB.VerificationCode {
+		t.Fatalf("devices received different pairing verification codes: %q != %q", pendingA.VerificationCode, pendingB.VerificationCode)
+	}
 	if _, err := managerA.Decide(created.PairingID, true); err != nil {
 		t.Fatal(err)
 	}

@@ -67,7 +67,7 @@ class MeshDaemonService : Service() {
         starter = scope.launch {
             val binary = MeshRuntime.binary(this@MeshDaemonService)
             if (!binary.isFile) {
-                MeshStore.update(MeshSnapshot(availability = MeshAvailability.ERROR, message = "Mesh engine is missing."))
+                MeshStore.update(MeshSnapshot(availability = MeshAvailability.ERROR, message = "Verlay engine is missing."))
                 return@launch
             }
             val started = try {
@@ -82,7 +82,7 @@ class MeshDaemonService : Service() {
             } catch (error: Exception) {
                 Log.e(TAG, "Verlay startup failed", error)
                 val detail = error.message?.takeIf { it.isNotBlank() }
-                    ?: "${error.javaClass.simpleName} while preparing the mesh engine."
+                    ?: "${error.javaClass.simpleName} while preparing Verlay."
                 MeshStore.update(
                     MeshSnapshot(
                         availability = MeshAvailability.ERROR,
@@ -91,7 +91,7 @@ class MeshDaemonService : Service() {
                 )
                 getSystemService(NotificationManager::class.java).notify(
                     NOTIFICATION_ID,
-                    notification("Mesh could not start"),
+                    notification("Verlay could not start"),
                 )
                 return@launch
             }
@@ -153,7 +153,7 @@ class MeshDaemonService : Service() {
         )
         return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL)
             .setSmallIcon(android.R.drawable.stat_sys_upload_done)
-            .setContentTitle("Mesh available")
+            .setContentTitle("Verlay available")
             .setContentText(message)
             .setContentIntent(openApp)
             .setOngoing(true)

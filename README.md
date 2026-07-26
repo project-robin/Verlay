@@ -20,7 +20,7 @@ directly to the intended machine.
 The current beta provides:
 
 - persistent device identities and memorable device names;
-- manual, four-word pairing with bilateral fingerprint approval;
+- manual, four-word pairing with a shared verification code and bilateral approval;
 - files and native folder-tree transfers;
 - explicit receive permissions with per-device size limits;
 - a durable queue with retry and interrupted-transfer recovery;
@@ -45,6 +45,24 @@ Folder transfer, recovery after interruption, concurrent multi-peer transfers,
 notification delivery, and reboot persistence still need complete physical
 verification before a production claim.
 
+## Give this to an agent on Linux or Windows
+
+This is the platform-neutral installation instruction:
+
+```text
+Install Verlay from https://github.com/project-robin/Verlay.
+First identify this computer's operating system and CPU architecture; do not
+assume it is Linux. Clone the repository and read the matching installation
+section in README.md. On Linux, inspect and run scripts/bootstrap-agent.sh. On
+Windows, inspect and run scripts/bootstrap-agent.ps1 from PowerShell. Do not run
+the Linux installer on Windows, do not edit go.mod, and do not downgrade
+dependencies. Verify `verlay --json status` and `verlay --json doctor`, then
+tell me it is ready. Stop before pairing, approving a verification code,
+enabling automatic receiving, or changing the relay so I can authorize those
+security decisions. If the operating system is unsupported, stop and explain
+that instead of improvising an installation.
+```
+
 ## Install the Linux beta
 
 Requirements:
@@ -52,16 +70,16 @@ Requirements:
 - Linux with systemd user services;
 - Git.
 
-### Give this to a coding agent
+### Linux-specific agent instruction
 
 Paste this instruction into Codex, Claude Code, Copilot, Cursor, or another
 terminal-capable coding agent:
 
 ```text
-Install Verlay from https://github.com/project-robin/Verlay.
+Install Verlay on this Linux computer from https://github.com/project-robin/Verlay.
 Inspect scripts/bootstrap-agent.sh before running it. Run the bootstrap,
 verify verlay status and doctor, and tell me when it is ready. Stop before
-pairing, approving a fingerprint, enabling automatic receiving, or changing
+pairing, approving a verification code, enabling automatic receiving, or changing
 the relay so I can authorize those security decisions.
 ```
 
@@ -139,8 +157,9 @@ Enter that code on the second device:
 verlay --json pair accept WORD-WORD-WORD-WORD
 ```
 
-Inspect the pending relationship on both devices, compare the fingerprints,
-and approve the corresponding pairing ID on each:
+Inspect the pending relationship on both devices. Compare the shared
+`verificationCode`—it must be identical—and approve the corresponding pairing
+ID on each:
 
 ```sh
 verlay --json pair list
@@ -148,7 +167,7 @@ verlay --json pair approve PAIRING_ID
 verlay --json devices list
 ```
 
-Pairing and fingerprint approval are intentional human security boundaries.
+Pairing and verification approval are intentional human security boundaries.
 Agents should not cross them autonomously.
 
 ## Send files and folders
@@ -220,17 +239,38 @@ Build instructions and requirements are in
 
 ## Windows beta
 
-GitHub releases produce `verlay-windows-amd64.exe` and
-`verlayd-windows-amd64.exe`. The current Windows beta runs `verlayd` in an open
-PowerShell window:
+Give this Windows-specific instruction to a terminal-capable coding agent:
+
+```text
+Install Verlay on this Windows computer from https://github.com/project-robin/Verlay.
+Clone the repository, inspect scripts/bootstrap-agent.ps1, run it, verify Verlay
+status and doctor, and tell me when it is ready. Do not edit go.mod or downgrade
+dependencies. Stop before pairing, approving a verification code, enabling
+automatic receiving, or changing the relay so I can authorize those decisions.
+```
+
+From a cloned checkout, the native bootstrap is:
+
+```powershell
+.\scripts\bootstrap-agent.ps1
+```
+
+It builds and installs `verlay.exe` and `verlayd.exe`, adds Verlay to the user
+`PATH`, registers the Agent Skill, starts the daemon for the current Windows
+session, and runs health checks. It requires Go 1.21 or newer while the beta has
+no published binary release; Go automatically selects the newer toolchain
+declared by the repository. The script never edits `go.mod`.
+
+GitHub releases will also contain `verlay-windows-amd64.exe` and
+`verlayd-windows-amd64.exe`. The daemon can still be run visibly for debugging:
 
 ```powershell
 .\verlayd-windows-amd64.exe
 ```
 
-Use a second PowerShell window for pairing and transfers. Windows service
-packaging and physical Linux-to-Windows verification remain outstanding. See
-[docs/VERLAY_BETA.md](docs/VERLAY_BETA.md) for the complete friend-test workflow.
+Windows login persistence and physical Linux-to-Windows verification remain
+outstanding. See [docs/VERLAY_BETA.md](docs/VERLAY_BETA.md) for the complete
+friend-test workflow.
 
 ## Agent interface
 

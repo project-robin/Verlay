@@ -3,7 +3,8 @@
 ## Trust model
 
 Pairing is a one-time human ceremony. A short-lived four-word PAKE code connects
-the devices, and both users approve the peer's Ed25519 fingerprint. Subsequent
+the devices, and both users approve the same session verification code. The API
+also reports the peer's Ed25519 fingerprint for identity inspection. Subsequent
 control connections use TLS 1.3 and pin the approved public keys.
 
 Pairing grants only the `files.request` capability. It does not grant remote

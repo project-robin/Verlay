@@ -23,19 +23,23 @@ import (
 	"github.com/schollz/pake/v3"
 )
 
-const pairingTTL = 10 * time.Minute
+const (
+	pairingTTL             = 10 * time.Minute
+	pairingProtocolVersion = 2
+)
 
 type PairingView struct {
-	PairingID       string    `json:"pairingId"`
-	Status          string    `json:"status"`
-	Direction       string    `json:"direction"`
-	PeerDeviceID    string    `json:"peerDeviceId,omitempty"`
-	PeerName        string    `json:"peerName,omitempty"`
-	PeerPlatform    string    `json:"peerPlatform,omitempty"`
-	PeerFingerprint string    `json:"peerFingerprint,omitempty"`
-	ExpiresAt       time.Time `json:"expiresAt"`
-	ErrorCode       string    `json:"errorCode,omitempty"`
-	ErrorMessage    string    `json:"errorMessage,omitempty"`
+	PairingID        string    `json:"pairingId"`
+	Status           string    `json:"status"`
+	Direction        string    `json:"direction"`
+	PeerDeviceID     string    `json:"peerDeviceId,omitempty"`
+	PeerName         string    `json:"peerName,omitempty"`
+	PeerPlatform     string    `json:"peerPlatform,omitempty"`
+	PeerFingerprint  string    `json:"peerFingerprint,omitempty"`
+	VerificationCode string    `json:"verificationCode,omitempty"`
+	ExpiresAt        time.Time `json:"expiresAt"`
+	ErrorCode        string    `json:"errorCode,omitempty"`
+	ErrorMessage     string    `json:"errorMessage,omitempty"`
 }
 
 type PairingCreated struct {
@@ -207,6 +211,7 @@ func (m *PairingManager) run(session *pairingSession) {
 		view.PeerName = peer.Name
 		view.PeerPlatform = peer.Platform
 		view.PeerFingerprint = publicKeyFingerprint(peer.PublicKey)
+		view.VerificationCode = pairingVerificationCode(channelKey)
 	})
 
 	var localApproved bool
@@ -260,7 +265,7 @@ func (m *PairingManager) exchangeIdentity(connection pairingMessageConn, code st
 	}
 	identity := m.store.Identity()
 	local := pairHello{
-		ProtocolVersion: ProtocolVersion,
+		ProtocolVersion: pairingProtocolVersion,
 		DeviceID:        identity.DeviceID,
 		Name:            sanitizeDeviceName(identity.Name),
 		Platform:        identity.Platform,
@@ -338,7 +343,7 @@ func exchangePAKE(connection pairingMessageConn, password []byte, creator bool) 
 }
 
 func validatePairHello(hello pairHello) ([]byte, error) {
-	if hello.ProtocolVersion != ProtocolVersion {
+	if hello.ProtocolVersion != pairingProtocolVersion {
 		return nil, fmt.Errorf("unsupported peer protocol version %d", hello.ProtocolVersion)
 	}
 	publicKey, err := base64.RawURLEncoding.DecodeString(hello.PublicKey)
@@ -522,7 +527,17 @@ func publicKeyFingerprint(encoded string) string {
 		return "invalid"
 	}
 	digest := sha256.Sum256(publicKey)
-	hexValue := strings.ToUpper(hex.EncodeToString(digest[:10]))
+	return formatVerificationBytes(digest[:10])
+}
+
+func pairingVerificationCode(channelKey []byte) string {
+	mac := hmac.New(sha256.New, channelKey)
+	mac.Write([]byte("verlay-pair-verification-v1"))
+	return formatVerificationBytes(mac.Sum(nil)[:10])
+}
+
+func formatVerificationBytes(value []byte) string {
+	hexValue := strings.ToUpper(hex.EncodeToString(value))
 	parts := make([]string, 0, len(hexValue)/4)
 	for i := 0; i < len(hexValue); i += 4 {
 		parts = append(parts, hexValue[i:i+4])

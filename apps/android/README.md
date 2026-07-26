@@ -44,7 +44,7 @@ Tap **Make phone available** to run it inside a visible Android foreground
 service. From that section you can:
 
 - create or enter a four-word pairing code;
-- compare and approve the other device's fingerprint;
+- compare the shared verification code and approve the other device;
 - send a selected document to a paired Linux device;
 - approve or reject incoming paired-device transfers.
 

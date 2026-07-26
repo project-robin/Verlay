@@ -32,7 +32,8 @@ verlay --json devices revoke DEVICE_ID
 
 Pairing codes expire after ten minutes and are not long-term credentials.
 Friendly names are local labels; the stable device ID is the unambiguous
-automation identifier.
+automation identifier. Revocation is also local: run it on both devices when
+the human wants the relationship removed from both device lists.
 
 ## Transfer lifecycle
 
