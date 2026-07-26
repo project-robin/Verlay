@@ -75,7 +75,7 @@ object MeshRuntime {
     private const val SEED_CIPHERTEXT = "identity_seed_ciphertext"
     private const val SEED_IV = "identity_seed_iv"
 
-    fun binary(context: Context): File = File(context.applicationInfo.nativeLibraryDir, "libmesh.so")
+    fun binary(context: Context): File = File(context.applicationInfo.nativeLibraryDir, "libverlay.so")
 
     fun environment(context: Context, includeIdentitySeed: Boolean = false): Map<String, String> {
         ensureLayout(context, refreshPublicRelay = includeIdentitySeed)
@@ -139,7 +139,7 @@ object MeshRuntime {
         if (!status.ok) {
             return MeshSnapshot(
                 availability = if (status.errorCode == "daemon_unavailable") MeshAvailability.STARTING else MeshAvailability.ERROR,
-                message = status.errorMessage ?: "Mesh daemon is unavailable.",
+                message = status.errorMessage ?: "Verlay is unavailable.",
             )
         }
         val pairings = command(context, "pair", "list", timeoutSeconds = 5).data
@@ -273,7 +273,7 @@ object MeshRuntime {
         val values = ContentValues().apply {
             put(MediaStore.Downloads.DISPLAY_NAME, SafeFileNames.fromDisplayName(displayName))
             put(MediaStore.Downloads.MIME_TYPE, mimeType)
-            put(MediaStore.Downloads.RELATIVE_PATH, "${Environment.DIRECTORY_DOWNLOADS}/Mesh")
+            put(MediaStore.Downloads.RELATIVE_PATH, "${Environment.DIRECTORY_DOWNLOADS}/Verlay")
             put(MediaStore.Downloads.IS_PENDING, 1)
         }
         val destination = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return false

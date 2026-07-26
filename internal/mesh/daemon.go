@@ -121,7 +121,7 @@ func (d *Daemon) acquireLock() error {
 	if err := lockFile(f); err != nil {
 		f.Close()
 		if errors.Is(err, errLockHeld) {
-			return &APIError{Code: "daemon_already_running", Message: "mesh daemon is already running", Retryable: false}
+			return &APIError{Code: "daemon_already_running", Message: "verlayd is already running", Retryable: false}
 		}
 		return fmt.Errorf("lock daemon: %w", err)
 	}
@@ -135,7 +135,7 @@ func (d *Daemon) listen() error {
 		conn, dialErr := net.DialTimeout("unix", path, 250*time.Millisecond)
 		if dialErr == nil {
 			conn.Close()
-			return &APIError{Code: "daemon_already_running", Message: "mesh daemon is already listening", Retryable: false}
+			return &APIError{Code: "daemon_already_running", Message: "verlayd is already listening", Retryable: false}
 		}
 		if err := os.Remove(path); err != nil {
 			return fmt.Errorf("remove stale daemon socket: %w", err)

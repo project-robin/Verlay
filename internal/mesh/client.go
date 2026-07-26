@@ -43,7 +43,7 @@ func (c *Client) Call(ctx context.Context, method, path string, request any) (En
 	}
 	response, err := c.http.Do(req)
 	if err != nil {
-		return Envelope{}, &APIError{Code: "daemon_unavailable", Message: "mesh daemon is unavailable", Retryable: true, Details: map[string]any{"cause": err.Error()}}
+		return Envelope{}, &APIError{Code: "daemon_unavailable", Message: "verlayd is unavailable", Retryable: true, Details: map[string]any{"cause": err.Error()}}
 	}
 	defer response.Body.Close()
 	var envelope Envelope

@@ -24,6 +24,24 @@ jobs:
       - name: Run unit tests
         run: go test -v ./...
 
+      - name: Validate Agent Skill and installers
+        run: |
+          bash -n scripts/bootstrap-agent.sh scripts/install-verlay-linux.sh scripts/install-mesh-linux.sh scripts/validate-agent-skill.sh
+          ./scripts/validate-agent-skill.sh
+          test_home="$(mktemp -d)"
+          HOME="$test_home" VERLAY_SKILL_METHOD=copy ./scripts/bootstrap-agent.sh --skill-only
+          test -f "$test_home/.agents/skills/verlay/SKILL.md"
+          test -f "$test_home/.agents/skills/verlay/references/security.md"
+          HOME="$test_home" XDG_CONFIG_HOME="$test_home/.config" \
+            XDG_DATA_HOME="$test_home/.local/share" XDG_RUNTIME_DIR="$test_home/run" \
+            VERLAY_INSTALL_ROOT="$test_home/.local" \
+            VERLAY_INSTALL_START_SERVICE=0 VERLAY_INSTALL_SOURCE=checkout \
+            GOCACHE="$RUNNER_TEMP/verlay-go-cache" ./scripts/install-verlay-linux.sh
+          "$test_home/.local/bin/verlay" --json version
+          test "$(readlink "$test_home/.local/bin/verlayd")" = verlay
+          test "$(readlink "$test_home/.local/bin/mesh")" = verlay
+          grep -q 'ExecStart=.*/verlayd' "$test_home/.config/systemd/user/verlayd.service"
+
       - name: Build files
         run: |
           go version

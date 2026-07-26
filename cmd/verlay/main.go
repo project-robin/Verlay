@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -30,7 +31,22 @@ type options struct {
 }
 
 func main() {
-	os.Exit(run(os.Args[1:]))
+	os.Exit(run(invocationArgs(os.Args[0], os.Args[1:])))
+}
+
+func invocationArgs(executable string, args []string) []string {
+	executable = strings.ReplaceAll(executable, `\`, "/")
+	name := strings.TrimSuffix(strings.ToLower(filepath.Base(executable)), ".exe")
+	if name == "verlayd" || strings.HasPrefix(name, "verlayd-") {
+		if len(args) > 0 && args[0] == "internal-transfer" {
+			return args
+		}
+		if len(args) != 0 {
+			return []string{"daemon", "invalid-verlayd-arguments"}
+		}
+		return []string{"daemon", "run"}
+	}
+	return args
 }
 
 func run(rawArgs []string) int {
@@ -58,7 +74,7 @@ func run(rawArgs []string) int {
 		return printSuccess(opts.json, commandSchema())
 	case "skill":
 		if len(args) != 2 || args[1] != "print" {
-			return printFailure(opts.json, &meshcore.APIError{Code: "invalid_usage", Message: "usage: mesh skill print", Retryable: false}, 2)
+			return printFailure(opts.json, &meshcore.APIError{Code: "invalid_usage", Message: "usage: verlay skill print", Retryable: false}, 2)
 		}
 		if opts.json {
 			return printSuccess(true, map[string]any{"skill": meshcore.AgentSkill()})
@@ -107,12 +123,12 @@ func runRelay(args []string, opts options, paths meshcore.Paths) int {
 			"address": args[1], "password": strings.TrimSpace(string(password)),
 		})
 	}
-	return printFailure(opts.json, &meshcore.APIError{Code: "invalid_usage", Message: "usage: mesh relay show|set HOST:PORT --password-stdin", Retryable: false}, 2)
+	return printFailure(opts.json, &meshcore.APIError{Code: "invalid_usage", Message: "usage: verlay relay show|set HOST:PORT --password-stdin", Retryable: false}, 2)
 }
 
 func runDaemon(args []string, opts options, paths meshcore.Paths) int {
 	if len(args) != 1 {
-		return printFailure(opts.json, &meshcore.APIError{Code: "invalid_usage", Message: "usage: mesh daemon run|start|stop|restart", Retryable: false}, 2)
+		return printFailure(opts.json, &meshcore.APIError{Code: "invalid_usage", Message: "usage: verlay daemon start|stop|restart (run verlayd directly for foreground mode)", Retryable: false}, 2)
 	}
 	if args[0] == "run" {
 		store, err := meshcore.OpenStore(paths)
@@ -131,15 +147,15 @@ func runDaemon(args []string, opts options, paths meshcore.Paths) int {
 		return 0
 	}
 	if args[0] != "start" && args[0] != "stop" && args[0] != "restart" {
-		return printFailure(opts.json, &meshcore.APIError{Code: "invalid_usage", Message: "usage: mesh daemon run|start|stop|restart", Retryable: false}, 2)
+		return printFailure(opts.json, &meshcore.APIError{Code: "invalid_usage", Message: "usage: verlay daemon start|stop|restart (run verlayd directly for foreground mode)", Retryable: false}, 2)
 	}
 	if runtime.GOOS == "windows" {
 		return printFailure(opts.json, &meshcore.APIError{
 			Code:    "service_control_unavailable",
-			Message: "Windows beta has no background service yet; keep `mesh.exe daemon run` open in one terminal",
+			Message: "Windows beta has no background service yet; keep `verlayd.exe` open in one terminal",
 		}, 3)
 	}
-	command := exec.Command("systemctl", "--user", args[0], "mesh.service")
+	command := exec.Command("systemctl", "--user", args[0], "verlayd.service")
 	output, err := command.CombinedOutput()
 	if err != nil {
 		message := strings.TrimSpace(string(output))
@@ -148,7 +164,7 @@ func runDaemon(args []string, opts options, paths meshcore.Paths) int {
 		}
 		return printFailure(opts.json, &meshcore.APIError{Code: "service_control_failed", Message: message, Retryable: true}, 3)
 	}
-	return printSuccess(opts.json, map[string]any{"action": args[0], "service": "mesh.service"})
+	return printSuccess(opts.json, map[string]any{"action": args[0], "service": "verlayd.service"})
 }
 
 func runSend(args []string, opts options, paths meshcore.Paths) int {
@@ -178,12 +194,12 @@ func runSend(args []string, opts options, paths meshcore.Paths) int {
 
 func parseSendArgs(args []string) (device, path string, exclusions []string, err error) {
 	if len(args) < 2 {
-		return "", "", nil, errors.New("usage: mesh send DEVICE PATH [--exclude PATHS]")
+		return "", "", nil, errors.New("usage: verlay send DEVICE PATH [--exclude PATHS]")
 	}
 	device, path = args[0], args[1]
 	for i := 2; i < len(args); i++ {
 		if args[i] != "--exclude" || i+1 >= len(args) {
-			return "", "", nil, errors.New("usage: mesh send DEVICE PATH [--exclude PATHS]")
+			return "", "", nil, errors.New("usage: verlay send DEVICE PATH [--exclude PATHS]")
 		}
 		i++
 		if len(args[i]) > 4096 {
@@ -210,14 +226,14 @@ func runTransfers(args []string, opts options, paths meshcore.Paths) int {
 		if len(args) == 4 && args[2] == "--out" {
 			outDir = args[3]
 		} else if len(args) != 2 {
-			return printFailure(opts.json, &meshcore.APIError{Code: "invalid_usage", Message: "usage: mesh transfers approve ID [--out DIRECTORY]", Retryable: false}, 2)
+			return printFailure(opts.json, &meshcore.APIError{Code: "invalid_usage", Message: "usage: verlay transfers approve ID [--out DIRECTORY]", Retryable: false}, 2)
 		}
 		return callDaemonWithBody(opts, paths, http.MethodPost, "/v1/transfers/"+url.PathEscape(args[1])+"/decision", map[string]any{"approve": args[0] == "approve", "outDir": outDir})
 	}
 	if len(args) == 2 && args[0] == "cancel" {
 		return callDaemonWithBody(opts, paths, http.MethodPost, "/v1/transfers/"+url.PathEscape(args[1])+"/cancel", map[string]any{})
 	}
-	return printFailure(opts.json, &meshcore.APIError{Code: "invalid_usage", Message: "usage: mesh transfers list|show ID|approve ID [--out DIR]|reject ID|cancel ID", Retryable: false}, 2)
+	return printFailure(opts.json, &meshcore.APIError{Code: "invalid_usage", Message: "usage: verlay transfers list|show ID|approve ID [--out DIR]|reject ID|cancel ID", Retryable: false}, 2)
 }
 
 func runDevices(args []string, opts options, paths meshcore.Paths) int {
@@ -245,12 +261,12 @@ func runDevices(args []string, opts options, paths meshcore.Paths) int {
 	if len(args) == 2 && args[0] == "require-approval" {
 		return callDaemonWithBody(opts, paths, http.MethodPost, "/v1/devices/"+url.PathEscape(args[1])+"/receive-policy", map[string]any{"autoReceive": false})
 	}
-	return printFailure(opts.json, &meshcore.APIError{Code: "invalid_usage", Message: "usage: mesh devices list|show ID|rename ID NAME|revoke ID|authorize DEVICE --max-bytes N [--folders]|require-approval DEVICE", Retryable: false}, 2)
+	return printFailure(opts.json, &meshcore.APIError{Code: "invalid_usage", Message: "usage: verlay devices list|show ID|rename ID NAME|revoke ID|authorize DEVICE --max-bytes N [--folders]|require-approval DEVICE", Retryable: false}, 2)
 }
 
 func parseReceiveAuthorization(args []string) (device string, maxBytes int64, folders bool, err error) {
 	if len(args) < 3 {
-		return "", 0, false, errors.New("usage: mesh devices authorize DEVICE --max-bytes N [--folders]")
+		return "", 0, false, errors.New("usage: verlay devices authorize DEVICE --max-bytes N [--folders]")
 	}
 	device = strings.TrimSpace(args[0])
 	for i := 1; i < len(args); i++ {
@@ -272,7 +288,7 @@ func parseReceiveAuthorization(args []string) (device string, maxBytes int64, fo
 		}
 	}
 	if device == "" || maxBytes <= 0 {
-		return "", 0, false, errors.New("usage: mesh devices authorize DEVICE --max-bytes N [--folders]")
+		return "", 0, false, errors.New("usage: verlay devices authorize DEVICE --max-bytes N [--folders]")
 	}
 	return device, maxBytes, folders, nil
 }
@@ -290,7 +306,7 @@ func runPair(args []string, opts options, paths meshcore.Paths) int {
 	if len(args) == 2 && (args[0] == "approve" || args[0] == "reject") {
 		return callDaemonWithBody(opts, paths, http.MethodPost, "/v1/pairings/"+url.PathEscape(args[1])+"/decision", map[string]any{"approve": args[0] == "approve"})
 	}
-	return printFailure(opts.json, &meshcore.APIError{Code: "invalid_usage", Message: "usage: mesh pair create|accept CODE|list|approve ID|reject ID", Retryable: false}, 2)
+	return printFailure(opts.json, &meshcore.APIError{Code: "invalid_usage", Message: "usage: verlay pair create|accept CODE|list|approve ID|reject ID", Retryable: false}, 2)
 }
 
 func callDaemon(opts options, paths meshcore.Paths, method, path string) int {
@@ -413,7 +429,7 @@ func printFailure(jsonMode bool, apiErr *meshcore.APIError, code int) int {
 	if jsonMode {
 		_ = json.NewEncoder(os.Stdout).Encode(meshcore.Envelope{OK: false, Error: apiErr})
 	} else {
-		fmt.Fprintf(os.Stderr, "mesh: %s (%s)\n", apiErr.Message, apiErr.Code)
+		fmt.Fprintf(os.Stderr, "verlay: %s (%s)\n", apiErr.Message, apiErr.Code)
 	}
 	return code
 }
@@ -452,7 +468,7 @@ func commandSchema() map[string]any {
 		"apiVersion":    meshcore.APIVersion,
 		"globalOptions": []string{"--json", "--no-input", "--wait", "--timeout DURATION"},
 		"commands": []string{
-			"status", "doctor", "daemon run|start|stop|restart",
+			"status", "doctor", "daemon start|stop|restart",
 			"relay show|set HOST:PORT --password-stdin",
 			"pair create|accept|list|approve|reject", "devices list|show|rename|revoke|authorize|require-approval", "schema", "version",
 			"send DEVICE PATH [--exclude PATHS]", "transfers list|show|approve|reject|cancel",
@@ -468,10 +484,10 @@ func commandSchema() map[string]any {
 	}
 }
 
-const helpText = `mesh - secure Verlay daemon (Linux/Android beta)
+const helpText = `verlay - secure cross-device CLI for Verlay
 
 Usage:
-  mesh [--json] [--no-input] [--wait] [--timeout 15s] COMMAND
+  verlay [--json] [--no-input] [--wait] [--timeout 15s] COMMAND
 
 Commands:
   status                         Show daemon and device status
@@ -479,7 +495,6 @@ Commands:
   relay show                     Show the relay address without its password
   relay set HOST:PORT --password-stdin
                                  Configure a self-hosted relay, then restart
-  daemon run                     Run the daemon in this terminal (all platforms)
   daemon start|stop|restart      Control the Linux user service
   pair create                    Create a ten-minute pairing code
   pair accept CODE               Connect using a pairing code

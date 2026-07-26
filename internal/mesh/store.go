@@ -362,7 +362,7 @@ func (s *Store) loadConfig() error {
 		if err != nil {
 			return err
 		}
-		config.ReceiveDir = filepath.Join(home, "Downloads", "Mesh")
+		config.ReceiveDir = filepath.Join(home, "Downloads", "Verlay")
 	}
 	if errors.Is(err, os.ErrNotExist) {
 		if err := writeJSONAtomic(s.paths.ConfigFile, config, 0o600); err != nil {

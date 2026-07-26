@@ -1,8 +1,5 @@
 package mesh
 
-import _ "embed"
+import "github.com/project-robin/Verlay/skills"
 
-//go:embed skill/skill.md
-var agentSkill string
-
-func AgentSkill() string { return agentSkill }
+func AgentSkill() string { return skills.Verlay() }

@@ -31,35 +31,36 @@ to the audit log. See [SECURITY.md](SECURITY.md) for boundaries and known gaps.
 From the repository root:
 
 ```sh
-./scripts/install-mesh-linux.sh
-mesh status
-mesh doctor
+./scripts/install-verlay-linux.sh
+verlay status
+verlay doctor
 ```
 
-This installs `~/.local/bin/mesh` and enables `mesh.service` as a systemd user
+This installs `~/.local/bin/verlay` and enables `verlayd.service` as a systemd user
 service. It requires neither sudo nor a language runtime after installation.
-Run `./scripts/install-mesh-linux.sh --uninstall` to remove the binary and user
+Run `./scripts/install-verlay-linux.sh --uninstall` to remove the binary and user
 service; identity and trust data are deliberately preserved.
 
 ## Windows CLI friend test
 
-Download `mesh-windows-amd64.exe` from the Verlay release. Because the beta
-binary is not code-signed, Windows may ask the user to confirm running it.
+Download `verlay-windows-amd64.exe` and `verlayd-windows-amd64.exe` from the
+Verlay release. Because the beta binaries are not code-signed, Windows may ask
+the user to confirm running them.
 
 Keep the daemon open in the first PowerShell window:
 
 ```powershell
-.\mesh-windows-amd64.exe daemon run
+.\verlayd-windows-amd64.exe
 ```
 
 Use a second PowerShell window for pairing and transfers:
 
 ```powershell
-.\mesh-windows-amd64.exe --json pair accept FOUR-WORD-CODE
-.\mesh-windows-amd64.exe --json pair list
-.\mesh-windows-amd64.exe --json pair approve PAIRING_ID
-.\mesh-windows-amd64.exe --json devices list
-.\mesh-windows-amd64.exe --json send FEDORA C:\Users\friend\Videos\clip.mp4 --wait --timeout 2h
+.\verlay-windows-amd64.exe --json pair accept FOUR-WORD-CODE
+.\verlay-windows-amd64.exe --json pair list
+.\verlay-windows-amd64.exe --json pair approve PAIRING_ID
+.\verlay-windows-amd64.exe --json devices list
+.\verlay-windows-amd64.exe --json send FEDORA C:\Users\friend\Videos\clip.mp4 --wait --timeout 2h
 ```
 
 For automatic Linux-to-Windows delivery, the Windows user must first grant the
@@ -76,16 +77,16 @@ repository's raw GitHub URL. It downloads a checksum-verified Linux binary. Set
 On one device:
 
 ```sh
-mesh --json pair create
+verlay --json pair create
 ```
 
 Enter the returned code on the other device, inspect both fingerprints, and
 approve both pending pairing IDs:
 
 ```sh
-mesh --json pair accept word-word-word-word
-mesh --json pair list
-mesh --json pair approve PAIRING_ID
+verlay --json pair accept word-word-word-word
+verlay --json pair list
+verlay --json pair approve PAIRING_ID
 ```
 
 ## Autonomous receiving
@@ -94,14 +95,14 @@ Pair once manually, then have the receiving user explicitly grant a bounded
 policy:
 
 ```sh
-mesh --json devices authorize EDITOR_TWO --max-bytes 10737418240 --folders
+verlay --json devices authorize EDITOR_TWO --max-bytes 10737418240 --folders
 ```
 
 Files from that device are then delivered to its dedicated inbox without a
 second click. Revoke the grant while keeping the pairing with:
 
 ```sh
-mesh --json devices require-approval EDITOR_TWO
+verlay --json devices require-approval EDITOR_TWO
 ```
 
 Pairing, authorization, relay changes, and revocation are human security
@@ -111,14 +112,14 @@ explicit instruction.
 ## Sending files and folders
 
 ```sh
-mesh --json devices list
-mesh --json send EDITOR_TWO /path/to/video.mp4
-mesh --json send EDITOR_TWO /path/to/project --exclude .git,node_modules
-mesh --json transfers list
-mesh --json transfers approve TRANSFER_ID --out "$HOME/Downloads/Mesh"
+verlay --json devices list
+verlay --json send EDITOR_TWO /path/to/video.mp4
+verlay --json send EDITOR_TWO /path/to/project --exclude .git,node_modules
+verlay --json transfers list
+verlay --json transfers approve TRANSFER_ID --out "$HOME/Downloads/Verlay"
 ```
 
-Use `--wait --timeout 30m` on `mesh send` when an agent should remain attached
+Use `--wait --timeout 30m` on `verlay send` when an agent should remain attached
 until the transfer reaches a terminal state. A wait timeout does not cancel the
 durable queue entry.
 
@@ -140,8 +141,8 @@ daemon child until that route has deterministic tests.
 Configure an owned Croc relay without exposing its password in shell history:
 
 ```sh
-printf '%s\n' "$RELAY_PASSWORD" | mesh --json relay set relay.example.com:9009 --password-stdin
-mesh daemon restart
+printf '%s\n' "$RELAY_PASSWORD" | verlay --json relay set relay.example.com:9009 --password-stdin
+verlay daemon restart
 ```
 
 Verlay supports regular files and native folder trees. It does not yet
@@ -163,7 +164,7 @@ live; durable storage is a separate, optional future product decision.
 ## Beta checklist
 
 - [x] Preserve the existing `croc` command and prototype transfer UI.
-- [x] Add the standalone Go `mesh` CLI and single-instance user daemon.
+- [x] Add the standalone Go `verlay` CLI and single-instance `verlayd` daemon.
 - [x] Persist Ed25519 identity and trusted-device relationships securely.
 - [x] Add four-word PAKE pairing with bilateral fingerprint approval.
 - [x] Add TLS 1.3 pinned control sessions and policy-bounded receive approval.

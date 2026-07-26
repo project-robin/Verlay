@@ -2,7 +2,7 @@
 
 This app provides the paired-device Verlay experience on Android and retains a
 legacy Croc code-transfer mode for compatibility testing. It builds the Go
-source from the repository root and packages the mesh runtime into an ARM64 APK.
+source from the repository root and packages the Verlay runtime into an ARM64 APK.
 
 ## Requirements
 
@@ -38,7 +38,8 @@ scope.
 
 ## Verlay paired-device mode
 
-The APK now also packages `libmesh.so`, the same Go daemon/CLI used on Linux.
+The APK now also packages `libverlay.so`, the same Go runtime used by
+`verlay` and `verlayd` on Linux.
 Tap **Make phone available** to run it inside a visible Android foreground
 service. From that section you can:
 
@@ -48,7 +49,7 @@ service. From that section you can:
 - approve or reject incoming paired-device transfers.
 
 Incoming mesh files are first received in app-private storage and then
-published to `Downloads/Mesh` through MediaStore. The persistent identity seed
+published to `Downloads/Verlay` through MediaStore. The persistent identity seed
 is wrapped by Android Keystore. The original Croc code-based workflow remains
 on the same screen as a compatibility fallback.
 

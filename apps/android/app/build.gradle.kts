@@ -8,7 +8,8 @@ plugins {
 val repositoryRoot = rootProject.projectDir.parentFile.parentFile
 val generatedJniRoot = layout.buildDirectory.dir("generated/croc-jni")
 val crocBinary = generatedJniRoot.map { it.file("arm64-v8a/libcroc.so") }
-val meshBinary = generatedJniRoot.map { it.file("arm64-v8a/libmesh.so") }
+val verlayBinary = generatedJniRoot.map { it.file("arm64-v8a/libverlay.so") }
+val legacyMeshBinary = generatedJniRoot.map { it.file("arm64-v8a/libmesh.so") }
 val sharedGoBuildCache = System.getenv("GOCACHE")
     ?: File(System.getProperty("java.io.tmpdir"), "croc-android-go-cache").absolutePath
 
@@ -38,9 +39,9 @@ val buildCrocAndroid by tasks.registering(Exec::class) {
     }
 }
 
-val buildMeshAndroid by tasks.registering(Exec::class) {
+val buildVerlayAndroid by tasks.registering(Exec::class) {
     group = "build"
-    description = "Cross-compile the daemon-centered mesh CLI for Android ARM64"
+    description = "Cross-compile the Verlay runtime for Android ARM64"
     workingDir(repositoryRoot)
     environment("CGO_ENABLED", "0")
     environment("GOOS", "android")
@@ -52,16 +53,17 @@ val buildMeshAndroid by tasks.registering(Exec::class) {
         "-trimpath",
         "-ldflags=-s -w",
         "-o",
-        meshBinary.get().asFile.absolutePath,
-        "./cmd/mesh",
+        verlayBinary.get().asFile.absolutePath,
+        "./cmd/verlay",
     )
     inputs.files(repositoryRoot.resolve("go.mod"), repositoryRoot.resolve("go.sum"))
-    inputs.dir(repositoryRoot.resolve("cmd/mesh"))
+    inputs.dir(repositoryRoot.resolve("cmd/verlay"))
     inputs.dir(repositoryRoot.resolve("internal/mesh"))
     inputs.dir(repositoryRoot.resolve("src"))
-    outputs.file(meshBinary)
+    outputs.file(verlayBinary)
     doFirst {
-        meshBinary.get().asFile.parentFile.mkdirs()
+        verlayBinary.get().asFile.parentFile.mkdirs()
+        legacyMeshBinary.get().asFile.delete()
     }
 }
 
@@ -115,7 +117,7 @@ android {
 
 tasks.named("preBuild").configure {
     dependsOn(buildCrocAndroid)
-    dependsOn(buildMeshAndroid)
+    dependsOn(buildVerlayAndroid)
 }
 
 dependencies {

@@ -334,7 +334,7 @@ class TransferService : Service() {
         )
         return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL)
             .setSmallIcon(android.R.drawable.stat_sys_upload)
-            .setContentTitle("Croc Transfer")
+            .setContentTitle("Verlay Mobile")
             .setContentText(snapshot.message)
             .setContentIntent(openApp)
             .setOngoing(snapshot.isActive)

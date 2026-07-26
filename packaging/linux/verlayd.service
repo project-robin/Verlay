@@ -1,11 +1,11 @@
 [Unit]
-Description=Verlay secure device daemon
+Description=Verlay background daemon
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=%h/.local/bin/mesh daemon run
+ExecStart=%h/.local/bin/verlayd
 Restart=on-failure
 RestartSec=3
 UMask=0077
@@ -19,7 +19,7 @@ StateDirectory=mesh
 StateDirectoryMode=0700
 RuntimeDirectory=mesh
 RuntimeDirectoryMode=0700
-ReadWritePaths=%h/.local/share/mesh %h/Downloads/Mesh
+ReadWritePaths=%h/.local/share/mesh %h/Downloads/Verlay -%h/Downloads/Mesh
 
 [Install]
 WantedBy=default.target

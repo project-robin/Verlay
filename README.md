@@ -36,10 +36,10 @@ The current beta provides:
 | Platform | Current status |
 | --- | --- |
 | Linux | CLI and background daemon; physically tested with Android |
-| Android | Functional beta app; bidirectional single-file transfer tested |
+| Verlay Mobile (Android) | Functional beta app; bidirectional single-file transfer tested |
 | Windows | CLI build available; background service and physical verification pending |
 | Linux desktop UI | Legacy transfer prototype; paired-device integration pending |
-| macOS and iOS | Planned, not currently supported |
+| macOS and Verlay Mobile (iOS) | Planned, not currently supported |
 
 Folder transfer, recovery after interruption, concurrent multi-peer transfers,
 notification delivery, and reboot persistence still need complete physical
@@ -50,58 +50,102 @@ verification before a production claim.
 Requirements:
 
 - Linux with systemd user services;
-- Go 1.25 or newer;
 - Git.
 
-Build and install from this repository:
+### Give this to a coding agent
+
+Paste this instruction into Codex, Claude Code, Copilot, Cursor, or another
+terminal-capable coding agent:
+
+```text
+Install Verlay from https://github.com/project-robin/Verlay.
+Inspect scripts/bootstrap-agent.sh before running it. Run the bootstrap,
+verify verlay status and doctor, and tell me when it is ready. Stop before
+pairing, approving a fingerprint, enabling automatic receiving, or changing
+the relay so I can authorize those security decisions.
+```
+
+The agent can clone the repository and complete the installation. The only
+required interactive boundary is first-device pairing and permission approval.
+
+### One-command setup
+
+Install the runtime, start its Linux user daemon, register the standard Agent
+Skill, and run health checks:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/project-robin/Verlay/main/scripts/bootstrap-agent.sh | bash
+```
+
+The bootstrap uses a verified release binary when Go is unavailable. Until the
+first Verlay release is published, install from a checkout with Go 1.25 or
+newer:
 
 ```sh
 git clone https://github.com/project-robin/Verlay.git
 cd Verlay
-./scripts/install-mesh-linux.sh
+./scripts/bootstrap-agent.sh
 ```
 
-The installer builds the Verlay CLI, installs it as `~/.local/bin/mesh`, and
-starts `mesh.service` for the current user. It does not require `sudo`.
+The bootstrap installs the Verlay CLI as `~/.local/bin/verlay`, starts
+`verlayd.service`, places the skill at `~/.agents/skills/verlay`, and uses the
+Skills CLI when available to register it with detected agent hosts. It does not
+require `sudo`.
 
 Verify the installation:
 
 ```sh
-mesh status
-mesh doctor
+verlay status
+verlay doctor
 ```
 
 Uninstall the binary and service while preserving device identity and pairing
 data:
 
 ```sh
-./scripts/install-mesh-linux.sh --uninstall
+./scripts/install-verlay-linux.sh --uninstall
 ```
 
-The command is still named `mesh` during the beta. A later release may expose a
-`verlay` command while retaining `mesh` as a compatibility alias.
+Install the skill alone into all agent hosts supported by the Skills CLI:
+
+```sh
+npx skills add project-robin/Verlay \
+  --skill verlay \
+  --global \
+  --agent '*' \
+  --copy \
+  --yes
+```
+
+The skill teaches an agent to operate Verlay; it does not silently pair a
+device or grant receive permissions. Some agent hosts discover newly installed
+skills only after starting a new session.
+
+`verlay` is the supported public command. Existing Linux installations also
+receive a deprecated `mesh` compatibility link so older scripts continue to
+work during migration.
 
 ## Pair two computers
 
 Create a short-lived pairing code on the first device:
 
 ```sh
-mesh --json pair create
+verlay --json pair create
 ```
 
 Enter that code on the second device:
 
 ```sh
-mesh --json pair accept WORD-WORD-WORD-WORD
+verlay --json pair accept WORD-WORD-WORD-WORD
 ```
 
 Inspect the pending relationship on both devices, compare the fingerprints,
 and approve the corresponding pairing ID on each:
 
 ```sh
-mesh --json pair list
-mesh --json pair approve PAIRING_ID
-mesh --json devices list
+verlay --json pair list
+verlay --json pair approve PAIRING_ID
+verlay --json devices list
 ```
 
 Pairing and fingerprint approval are intentional human security boundaries.
@@ -112,32 +156,32 @@ Agents should not cross them autonomously.
 Send a file:
 
 ```sh
-mesh --json send EDITOR_TWO /path/to/video.mp4
+verlay --json send EDITOR_TWO /path/to/video.mp4
 ```
 
 Send a folder while excluding generated content:
 
 ```sh
-mesh --json send EDITOR_TWO /path/to/project --exclude .git,node_modules
+verlay --json send EDITOR_TWO /path/to/project --exclude .git,node_modules
 ```
 
 Wait for a terminal result in an agent workflow:
 
 ```sh
-mesh --json send EDITOR_TWO /path/to/result.zip --wait --timeout 2h
+verlay --json send EDITOR_TWO /path/to/result.zip --wait --timeout 2h
 ```
 
 Inspect transfers:
 
 ```sh
-mesh --json transfers list
-mesh --json transfers show TRANSFER_ID
+verlay --json transfers list
+verlay --json transfers show TRANSFER_ID
 ```
 
 Approve a manually reviewed incoming transfer:
 
 ```sh
-mesh --json transfers approve TRANSFER_ID --out "$HOME/Downloads/Mesh"
+verlay --json transfers approve TRANSFER_ID --out "$HOME/Downloads/Verlay"
 ```
 
 ## Authorize automatic delivery
@@ -146,46 +190,47 @@ After pairing, a receiving user can grant one device a bounded automatic-receive
 policy:
 
 ```sh
-mesh --json devices authorize EDITOR_TWO --max-bytes 10737418240 --folders
+verlay --json devices authorize EDITOR_TWO --max-bytes 10737418240 --folders
 ```
 
 Return that device to manual approval without removing the pairing:
 
 ```sh
-mesh --json devices require-approval EDITOR_TWO
+verlay --json devices require-approval EDITOR_TWO
 ```
 
 Revoke the relationship completely:
 
 ```sh
-mesh --json devices revoke EDITOR_TWO
+verlay --json devices revoke EDITOR_TWO
 ```
 
-## Android beta
+## Verlay Mobile beta
 
-The Android app embeds the same Go mesh runtime used by Linux. It can:
+The Android app embeds the same Go Verlay runtime used by Linux. It can:
 
 - create, accept, and approve pairings;
 - remain available through a visible foreground service;
 - send a selected document to a paired computer;
 - approve or reject incoming transfers;
-- publish received files to `Downloads/Mesh`.
+- publish received files to `Downloads/Verlay`.
 
 Build instructions and requirements are in
 [apps/android/README.md](apps/android/README.md).
 
 ## Windows beta
 
-GitHub releases can produce `mesh-windows-amd64.exe`. The current Windows beta
-runs the daemon in an open PowerShell window:
+GitHub releases produce `verlay-windows-amd64.exe` and
+`verlayd-windows-amd64.exe`. The current Windows beta runs `verlayd` in an open
+PowerShell window:
 
 ```powershell
-.\mesh-windows-amd64.exe daemon run
+.\verlayd-windows-amd64.exe
 ```
 
 Use a second PowerShell window for pairing and transfers. Windows service
 packaging and physical Linux-to-Windows verification remain outstanding. See
-[docs/MESH_ALPHA.md](docs/MESH_ALPHA.md) for the complete friend-test workflow.
+[docs/VERLAY_BETA.md](docs/VERLAY_BETA.md) for the complete friend-test workflow.
 
 ## Agent interface
 
@@ -193,11 +238,11 @@ Verlay is CLI-first so an AI agent can use it without operating a desktop UI.
 Automation features include:
 
 ```sh
-mesh --json status
-mesh --json devices list
-mesh --json transfers list
-mesh --json schema
-mesh skill print
+verlay --json status
+verlay --json devices list
+verlay --json transfers list
+verlay --json schema
+verlay skill print
 ```
 
 Commands return stable JSON envelopes and meaningful process exit codes. The
@@ -208,15 +253,15 @@ embedded skill documents which actions require human authorization.
 ```text
 Person or AI agent
         |
-     mesh CLI
+     verlay CLI
         |
-  local Verlay daemon
+  local verlayd daemon
         |
 authenticated control channel
         |
  encrypted live relay transport
         |
- remote Verlay daemon or Android peer
+ remote verlayd or Verlay Mobile peer
 ```
 
 - The daemon owns identity, trust relationships, permissions, queues, and
@@ -237,8 +282,9 @@ monitored relay endpoints.
 ## Repository layout
 
 ```text
-cmd/mesh/          Verlay CLI
+cmd/verlay/          Verlay CLI
 internal/mesh/     daemon, identity, pairing, permissions, queue, and transfers
+skills/verlay/     portable Agent Skill and focused operating references
 apps/android/      Android beta
 apps/desktop/      Tauri desktop prototype
 packaging/linux/   systemd user service
@@ -249,7 +295,7 @@ src/               Croc-derived encrypted transfer foundation
 
 ## Documentation
 
-- [Beta operations and limitations](docs/MESH_ALPHA.md)
+- [Beta operations and limitations](docs/VERLAY_BETA.md)
 - [Security model](docs/SECURITY.md)
 - [Android build and testing](apps/android/README.md)
 - [Desktop prototype](apps/desktop/README.md)
@@ -273,6 +319,6 @@ Verlay modifications are distributed under the MIT License. See
 ## Contributing
 
 Verlay is currently a production-oriented beta. Bug reports should include the
-platforms involved, `mesh doctor` output with secrets removed, the transfer
+platforms involved, `verlay doctor` output with secrets removed, the transfer
 direction, and whether the failure occurred during pairing, connection, or
 transfer.
