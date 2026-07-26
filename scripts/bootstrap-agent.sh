@@ -5,7 +5,7 @@ repository="${VERLAY_REPOSITORY:-project-robin/Verlay}"
 version="${VERLAY_VERSION:-latest}"
 install_runtime=1
 install_skill=1
-start_service="${MESH_INSTALL_START_SERVICE:-1}"
+start_service="${VERLAY_INSTALL_START_SERVICE:-1}"
 skill_method="${VERLAY_SKILL_METHOD:-auto}"
 install_source="${VERLAY_INSTALL_SOURCE:-auto}"
 declare -a agent_hosts=()
@@ -27,7 +27,7 @@ Options:
   --no-start              Install verlay/verlayd without starting verlayd
   -h, --help              Show this help
 
-The bootstrap never pairs devices, approves fingerprints, authorizes automatic
+The bootstrap never pairs devices, approves verification codes, authorizes automatic
 receiving, changes relays, or grants filesystem access.
 EOF
 }
@@ -94,8 +94,16 @@ case "$install_source" in
   *) fail "--source must be auto, checkout, or release" ;;
 esac
 
-if [[ "$install_runtime" == "1" && "$(uname -s)" != "Linux" ]]; then
-  fail "the managed one-command runtime installer currently supports Linux only"
+host_os="$(uname -s)"
+if [[ "$install_runtime" == "1" && "$host_os" != "Linux" ]]; then
+  case "$host_os" in
+    MINGW*|MSYS*|CYGWIN*)
+      fail 'Windows detected. Open PowerShell and run .\scripts\bootstrap-agent.ps1'
+      ;;
+    *)
+      fail "unsupported operating system '$host_os'; do not improvise an installation"
+      ;;
+  esac
 fi
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || true)"
@@ -176,7 +184,7 @@ if [[ "$install_skill" == "1" ]]; then
   fi
 fi
 
-verlay_binary="${VERLAY_INSTALL_ROOT:-${MESH_INSTALL_ROOT:-$HOME/.local}}/bin/verlay"
+verlay_binary="${VERLAY_INSTALL_ROOT:-$HOME/.local}/bin/verlay"
 if [[ "$install_runtime" == "1" ]]; then
   "$verlay_binary" --json version
   "$verlay_binary" --json schema >/dev/null

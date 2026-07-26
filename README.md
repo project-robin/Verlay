@@ -20,7 +20,7 @@ directly to the intended machine.
 The current beta provides:
 
 - persistent device identities and memorable device names;
-- manual, four-word pairing with bilateral fingerprint approval;
+- manual, four-word PAKE pairing;
 - files and native folder-tree transfers;
 - explicit receive permissions with per-device size limits;
 - a durable queue with retry and interrupted-transfer recovery;
@@ -38,12 +38,29 @@ The current beta provides:
 | Linux | CLI and background daemon; physically tested with Android |
 | Verlay Mobile (Android) | Functional beta app; bidirectional single-file transfer tested |
 | Windows | CLI build available; background service and physical verification pending |
-| Linux desktop UI | Legacy transfer prototype; paired-device integration pending |
 | macOS and Verlay Mobile (iOS) | Planned, not currently supported |
 
 Folder transfer, recovery after interruption, concurrent multi-peer transfers,
 notification delivery, and reboot persistence still need complete physical
 verification before a production claim.
+
+## Give this to an agent on Linux or Windows
+
+This is the platform-neutral installation instruction:
+
+```text
+Install Verlay from https://github.com/project-robin/Verlay.
+First identify this computer's operating system and CPU architecture; do not
+assume it is Linux. Clone the repository and read the matching installation
+section in README.md. On Linux, inspect and run scripts/bootstrap-agent.sh. On
+Windows, inspect and run scripts/bootstrap-agent.ps1 from PowerShell. Do not run
+the Linux installer on Windows, do not edit go.mod, and do not downgrade
+dependencies. Verify `verlay --json status` and `verlay --json doctor`, then
+tell me it is ready. Stop before pairing,
+enabling automatic receiving, or changing the relay so I can authorize those
+security decisions. If the operating system is unsupported, stop and explain
+that instead of improvising an installation.
+```
 
 ## Install the Linux beta
 
@@ -52,16 +69,16 @@ Requirements:
 - Linux with systemd user services;
 - Git.
 
-### Give this to a coding agent
+### Linux-specific agent instruction
 
 Paste this instruction into Codex, Claude Code, Copilot, Cursor, or another
 terminal-capable coding agent:
 
 ```text
-Install Verlay from https://github.com/project-robin/Verlay.
+Install Verlay on this Linux computer from https://github.com/project-robin/Verlay.
 Inspect scripts/bootstrap-agent.sh before running it. Run the bootstrap,
 verify verlay status and doctor, and tell me when it is ready. Stop before
-pairing, approving a fingerprint, enabling automatic receiving, or changing
+pairing, enabling automatic receiving, or changing
 the relay so I can authorize those security decisions.
 ```
 
@@ -121,9 +138,7 @@ The skill teaches an agent to operate Verlay; it does not silently pair a
 device or grant receive permissions. Some agent hosts discover newly installed
 skills only after starting a new session.
 
-`verlay` is the supported public command. Existing Linux installations also
-receive a deprecated `mesh` compatibility link so older scripts continue to
-work during migration.
+`verlay` is the supported public command.
 
 ## Pair two computers
 
@@ -139,17 +154,15 @@ Enter that code on the second device:
 verlay --json pair accept WORD-WORD-WORD-WORD
 ```
 
-Inspect the pending relationship on both devices, compare the fingerprints,
-and approve the corresponding pairing ID on each:
+The devices pair automatically after the second device enters the code:
 
 ```sh
 verlay --json pair list
-verlay --json pair approve PAIRING_ID
 verlay --json devices list
 ```
 
-Pairing and fingerprint approval are intentional human security boundaries.
-Agents should not cross them autonomously.
+Creating or entering a pairing code is an intentional human security boundary.
+Agents should not do either without explicit instruction.
 
 ## Send files and folders
 
@@ -209,7 +222,7 @@ verlay --json devices revoke EDITOR_TWO
 
 The Android app embeds the same Go Verlay runtime used by Linux. It can:
 
-- create, accept, and approve pairings;
+- create or enter pairing codes;
 - remain available through a visible foreground service;
 - send a selected document to a paired computer;
 - approve or reject incoming transfers;
@@ -220,17 +233,39 @@ Build instructions and requirements are in
 
 ## Windows beta
 
-GitHub releases produce `verlay-windows-amd64.exe` and
-`verlayd-windows-amd64.exe`. The current Windows beta runs `verlayd` in an open
-PowerShell window:
+Give this Windows-specific instruction to a terminal-capable coding agent:
 
-```powershell
-.\verlayd-windows-amd64.exe
+```text
+Install Verlay on this Windows computer from https://github.com/project-robin/Verlay.
+Clone the repository, inspect scripts/bootstrap-agent.ps1, run it, verify Verlay
+status and doctor, and tell me when it is ready. Do not edit go.mod or downgrade
+dependencies. Stop before pairing, enabling
+automatic receiving, or changing the relay so I can authorize those decisions.
 ```
 
-Use a second PowerShell window for pairing and transfers. Windows service
-packaging and physical Linux-to-Windows verification remain outstanding. See
-[docs/VERLAY_BETA.md](docs/VERLAY_BETA.md) for the complete friend-test workflow.
+From a cloned checkout, the native bootstrap is:
+
+```powershell
+.\scripts\bootstrap-agent.ps1
+```
+
+It builds and installs `verlay.exe` and `verlayd.exe`, adds Verlay to the user
+`PATH`, registers the Agent Skill, starts the daemon for the current Windows
+session, and runs health checks. It requires Go 1.21 or newer while the beta has
+no published binary release; Go automatically selects the newer toolchain
+declared by the repository. The script never edits `go.mod`.
+
+GitHub releases will contain `verlay-windows-amd64.exe`. Copy it to
+`verlayd.exe` to run the same binary in daemon mode:
+
+```powershell
+Copy-Item .\verlay-windows-amd64.exe .\verlayd.exe
+.\verlayd.exe
+```
+
+Windows login persistence and physical Linux-to-Windows verification remain
+outstanding. See [docs/VERLAY_BETA.md](docs/VERLAY_BETA.md) for the complete
+friend-test workflow.
 
 ## Agent interface
 
@@ -286,7 +321,6 @@ cmd/verlay/          Verlay CLI
 internal/mesh/     daemon, identity, pairing, permissions, queue, and transfers
 skills/verlay/     portable Agent Skill and focused operating references
 apps/android/      Android beta
-apps/desktop/      Tauri desktop prototype
 packaging/linux/   systemd user service
 scripts/           installation tooling
 docs/              security model and beta operations
@@ -298,18 +332,17 @@ src/               Croc-derived encrypted transfer foundation
 - [Beta operations and limitations](docs/VERLAY_BETA.md)
 - [Security model](docs/SECURITY.md)
 - [Android build and testing](apps/android/README.md)
-- [Desktop prototype](apps/desktop/README.md)
 - [LocalSend comparison methodology](benchmarks/localsend-vs-croc/README.md)
 
 ## Built on Croc
 
 Verlay originated from [Croc](https://github.com/schollz/croc), created by Zack
 Scholl and its contributors. Croc provides the encrypted relay-based transfer
-foundation and remains available in this repository as a compatibility layer.
+foundation used internally by Verlay.
 
 Verlay adds persistent device identity, trusted pairing, permissions, a daemon,
-durable queues, an agent-oriented JSON interface, Android mesh integration,
-desktop prototypes, and product-specific packaging. Verlay is an independent
+durable queues, an agent-oriented JSON interface, Android integration, and
+product-specific packaging. Verlay is an independent
 project and is not affiliated with or endorsed by the original Croc project.
 
 The original copyright notices are preserved. Both the original work and

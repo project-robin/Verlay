@@ -7,37 +7,9 @@ plugins {
 
 val repositoryRoot = rootProject.projectDir.parentFile.parentFile
 val generatedJniRoot = layout.buildDirectory.dir("generated/croc-jni")
-val crocBinary = generatedJniRoot.map { it.file("arm64-v8a/libcroc.so") }
 val verlayBinary = generatedJniRoot.map { it.file("arm64-v8a/libverlay.so") }
-val legacyMeshBinary = generatedJniRoot.map { it.file("arm64-v8a/libmesh.so") }
 val sharedGoBuildCache = System.getenv("GOCACHE")
     ?: File(System.getProperty("java.io.tmpdir"), "croc-android-go-cache").absolutePath
-
-val buildCrocAndroid by tasks.registering(Exec::class) {
-    group = "build"
-    description = "Cross-compile this checkout of croc for Android ARM64"
-    workingDir(repositoryRoot)
-    environment("CGO_ENABLED", "0")
-    environment("GOOS", "android")
-    environment("GOARCH", "arm64")
-    environment("GOCACHE", sharedGoBuildCache)
-    commandLine(
-        "go",
-        "build",
-        "-trimpath",
-        "-ldflags=-s -w",
-        "-o",
-        crocBinary.get().asFile.absolutePath,
-        ".",
-    )
-    inputs.files(repositoryRoot.resolve("go.mod"), repositoryRoot.resolve("go.sum"))
-    inputs.files(repositoryRoot.resolve("main.go"))
-    inputs.dir(repositoryRoot.resolve("src"))
-    outputs.file(crocBinary)
-    doFirst {
-        crocBinary.get().asFile.parentFile.mkdirs()
-    }
-}
 
 val buildVerlayAndroid by tasks.registering(Exec::class) {
     group = "build"
@@ -63,7 +35,8 @@ val buildVerlayAndroid by tasks.registering(Exec::class) {
     outputs.file(verlayBinary)
     doFirst {
         verlayBinary.get().asFile.parentFile.mkdirs()
-        legacyMeshBinary.get().asFile.delete()
+        verlayBinary.get().asFile.parentFile.resolve("libcroc.so").delete()
+        verlayBinary.get().asFile.parentFile.resolve("libmesh.so").delete()
     }
 }
 
@@ -116,7 +89,6 @@ android {
 }
 
 tasks.named("preBuild").configure {
-    dependsOn(buildCrocAndroid)
     dependsOn(buildVerlayAndroid)
 }
 

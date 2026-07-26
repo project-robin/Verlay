@@ -269,8 +269,22 @@ func (s *Store) loadOrCreateIdentity() error {
 			seed = base64.RawURLEncoding.EncodeToString(externalSeed)
 		}
 		identity.Seed = seed
+		nameChanged := false
+		if configuredName := sanitizeDeviceName(os.Getenv("VERLAY_DEVICE_NAME")); configuredName != "Unnamed device" && configuredName != identity.Name {
+			identity.Name = configuredName
+			nameChanged = true
+		}
 		if err := validateIdentity(identity); err != nil {
 			return fmt.Errorf("invalid identity file: %w", err)
+		}
+		if nameChanged {
+			persistedIdentity := identity
+			if len(externalSeed) > 0 {
+				persistedIdentity.Seed = ""
+			}
+			if err := writeJSONAtomic(s.paths.IdentityFile, persistedIdentity, 0o600); err != nil {
+				return fmt.Errorf("update device name: %w", err)
+			}
 		}
 		s.identity = identity
 		return os.Chmod(s.paths.IdentityFile, 0o600)
@@ -289,7 +303,10 @@ func (s *Store) loadOrCreateIdentity() error {
 			return fmt.Errorf("generate device identity: %w", err)
 		}
 	}
-	hostname, _ := os.Hostname()
+	hostname := sanitizeDeviceName(os.Getenv("VERLAY_DEVICE_NAME"))
+	if hostname == "Unnamed device" {
+		hostname, _ = os.Hostname()
+	}
 	if hostname == "" {
 		hostname = "Linux device"
 	}

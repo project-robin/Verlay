@@ -23,7 +23,10 @@ import (
 	"github.com/schollz/pake/v3"
 )
 
-const pairingTTL = 10 * time.Minute
+const (
+	pairingTTL             = 10 * time.Minute
+	pairingProtocolVersion = 3
+)
 
 type PairingView struct {
 	PairingID       string    `json:"pairingId"`
@@ -52,11 +55,10 @@ type pairingMessageConn interface {
 type pairingConnector func(context.Context, string, string) (pairingMessageConn, error)
 
 type pairingSession struct {
-	mu       sync.RWMutex
-	view     PairingView
-	code     string
-	creator  bool
-	decision chan bool
+	mu      sync.RWMutex
+	view    PairingView
+	code    string
+	creator bool
 }
 
 type PairingManager struct {
@@ -124,32 +126,6 @@ func (m *PairingManager) List() []PairingView {
 	return views
 }
 
-func (m *PairingManager) Decide(id string, approve bool) (PairingView, error) {
-	m.mu.RLock()
-	session, ok := m.sessions[id]
-	m.mu.RUnlock()
-	if !ok {
-		return PairingView{}, &APIError{Code: "pairing_not_found", Message: "pairing request was not found", Retryable: false}
-	}
-	view := session.snapshot()
-	if view.Status != "pending_approval" {
-		return PairingView{}, &APIError{Code: "pairing_not_approvable", Message: "pairing is not waiting for approval", Retryable: false}
-	}
-	select {
-	case session.decision <- approve:
-		session.update(func(view *PairingView) {
-			if approve {
-				view.Status = "waiting_for_peer_approval"
-			} else {
-				view.Status = "rejecting"
-			}
-		})
-		return session.snapshot(), nil
-	default:
-		return PairingView{}, &APIError{Code: "pairing_already_decided", Message: "pairing decision was already submitted", Retryable: false}
-	}
-}
-
 func (m *PairingManager) newSession(code string, creator bool) (*pairingSession, error) {
 	id, err := randomHex(16)
 	if err != nil {
@@ -166,9 +142,8 @@ func (m *PairingManager) newSession(code string, creator bool) (*pairingSession,
 			Direction: direction,
 			ExpiresAt: time.Now().UTC().Add(pairingTTL),
 		},
-		code:     code,
-		creator:  creator,
-		decision: make(chan bool, 1),
+		code:    code,
+		creator: creator,
 	}
 	m.mu.Lock()
 	m.sessions[id] = session
@@ -192,7 +167,7 @@ func (m *PairingManager) run(session *pairingSession) {
 		connection.Close()
 	}()
 
-	peer, relationshipKey, channelKey, err := m.exchangeIdentity(connection, session.code, session.creator)
+	peer, relationshipKey, err := m.exchangeIdentity(connection, session.code, session.creator)
 	if err != nil {
 		code := "authentication_failed"
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
@@ -202,30 +177,11 @@ func (m *PairingManager) run(session *pairingSession) {
 		return
 	}
 	session.update(func(view *PairingView) {
-		view.Status = "pending_approval"
 		view.PeerDeviceID = peer.DeviceID
 		view.PeerName = peer.Name
 		view.PeerPlatform = peer.Platform
 		view.PeerFingerprint = publicKeyFingerprint(peer.PublicKey)
 	})
-
-	var localApproved bool
-	select {
-	case localApproved = <-session.decision:
-	case <-ctx.Done():
-		m.fail(session, "pairing_expired", "pairing approval expired", false)
-		return
-	}
-	remoteApproved, err := exchangePairingDecision(connection, channelKey, session.creator, localApproved)
-	if err != nil {
-		m.fail(session, "pairing_connection_lost", err.Error(), true)
-		return
-	}
-	if !localApproved || !remoteApproved {
-		session.update(func(view *PairingView) { view.Status = "rejected" })
-		_ = m.store.Audit(AuditEvent{Action: "pairing.decision", Outcome: "rejected", RequestID: session.snapshot().PairingID, DeviceID: peer.DeviceID})
-		return
-	}
 	peer.RelationshipKey = base64.RawURLEncoding.EncodeToString(relationshipKey)
 	peer.Capabilities = []string{"files.request"}
 	peer.PairedAt = time.Now().UTC()
@@ -247,20 +203,20 @@ type pairHello struct {
 	Contribution    string `json:"contribution"`
 }
 
-func (m *PairingManager) exchangeIdentity(connection pairingMessageConn, code string, creator bool) (Device, []byte, []byte, error) {
+func (m *PairingManager) exchangeIdentity(connection pairingMessageConn, code string, creator bool) (Device, []byte, error) {
 	sessionKey, err := exchangePAKE(connection, []byte(code), creator)
 	if err != nil {
-		return Device{}, nil, nil, fmt.Errorf("pairing PAKE failed: %w", err)
+		return Device{}, nil, fmt.Errorf("pairing PAKE failed: %w", err)
 	}
 	channelDigest := sha256.Sum256(append(append([]byte(nil), sessionKey...), []byte("mesh-pair-channel-v1")...))
 	channelKey := channelDigest[:]
 	contribution := make([]byte, 32)
 	if _, err := rand.Read(contribution); err != nil {
-		return Device{}, nil, nil, err
+		return Device{}, nil, err
 	}
 	identity := m.store.Identity()
 	local := pairHello{
-		ProtocolVersion: ProtocolVersion,
+		ProtocolVersion: pairingProtocolVersion,
 		DeviceID:        identity.DeviceID,
 		Name:            sanitizeDeviceName(identity.Name),
 		Platform:        identity.Platform,
@@ -270,22 +226,22 @@ func (m *PairingManager) exchangeIdentity(connection pairingMessageConn, code st
 	var remote pairHello
 	if creator {
 		if err := sendEncryptedJSON(connection, channelKey, local); err != nil {
-			return Device{}, nil, nil, err
+			return Device{}, nil, err
 		}
 		if err := receiveEncryptedJSON(connection, channelKey, &remote); err != nil {
-			return Device{}, nil, nil, err
+			return Device{}, nil, err
 		}
 	} else {
 		if err := receiveEncryptedJSON(connection, channelKey, &remote); err != nil {
-			return Device{}, nil, nil, err
+			return Device{}, nil, err
 		}
 		if err := sendEncryptedJSON(connection, channelKey, local); err != nil {
-			return Device{}, nil, nil, err
+			return Device{}, nil, err
 		}
 	}
 	remoteContribution, err := validatePairHello(remote)
 	if err != nil {
-		return Device{}, nil, nil, err
+		return Device{}, nil, err
 	}
 	creatorContribution, acceptorContribution := contribution, remoteContribution
 	creatorID, acceptorID := local.DeviceID, remote.DeviceID
@@ -299,7 +255,7 @@ func (m *PairingManager) exchangeIdentity(connection pairingMessageConn, code st
 	mac.Write(acceptorContribution)
 	mac.Write([]byte(creatorID))
 	mac.Write([]byte(acceptorID))
-	return Device{DeviceID: remote.DeviceID, Name: remote.Name, Platform: remote.Platform, PublicKey: remote.PublicKey}, mac.Sum(nil), channelKey, nil
+	return Device{DeviceID: remote.DeviceID, Name: remote.Name, Platform: remote.Platform, PublicKey: remote.PublicKey}, mac.Sum(nil), nil
 }
 
 func exchangePAKE(connection pairingMessageConn, password []byte, creator bool) ([]byte, error) {
@@ -338,7 +294,7 @@ func exchangePAKE(connection pairingMessageConn, password []byte, creator bool) 
 }
 
 func validatePairHello(hello pairHello) ([]byte, error) {
-	if hello.ProtocolVersion != ProtocolVersion {
+	if hello.ProtocolVersion != pairingProtocolVersion {
 		return nil, fmt.Errorf("unsupported peer protocol version %d", hello.ProtocolVersion)
 	}
 	publicKey, err := base64.RawURLEncoding.DecodeString(hello.PublicKey)
@@ -357,31 +313,6 @@ func validatePairHello(hello pairHello) ([]byte, error) {
 		return nil, errors.New("peer sent invalid device metadata")
 	}
 	return contribution, nil
-}
-
-type pairingDecision struct {
-	Approved bool `json:"approved"`
-}
-
-func exchangePairingDecision(connection pairingMessageConn, key []byte, creator, localApproved bool) (bool, error) {
-	local := pairingDecision{Approved: localApproved}
-	var remote pairingDecision
-	if creator {
-		if err := sendEncryptedJSON(connection, key, local); err != nil {
-			return false, err
-		}
-		if err := receiveEncryptedJSON(connection, key, &remote); err != nil {
-			return false, err
-		}
-	} else {
-		if err := receiveEncryptedJSON(connection, key, &remote); err != nil {
-			return false, err
-		}
-		if err := sendEncryptedJSON(connection, key, local); err != nil {
-			return false, err
-		}
-	}
-	return remote.Approved, nil
 }
 
 func sendEncryptedJSON(connection pairingMessageConn, key []byte, value any) error {
@@ -522,7 +453,11 @@ func publicKeyFingerprint(encoded string) string {
 		return "invalid"
 	}
 	digest := sha256.Sum256(publicKey)
-	hexValue := strings.ToUpper(hex.EncodeToString(digest[:10]))
+	return formatVerificationBytes(digest[:10])
+}
+
+func formatVerificationBytes(value []byte) string {
+	hexValue := strings.ToUpper(hex.EncodeToString(value))
 	parts := make([]string, 0, len(hexValue)/4)
 	for i := 0; i < len(hexValue); i += 4 {
 		parts = append(parts, hexValue[i:i+4])

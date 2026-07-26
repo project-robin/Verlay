@@ -38,14 +38,6 @@ func TestPairingCreatesMatchingPersistentTrust(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	waitForPairingStatus(t, managerA, created.PairingID, "pending_approval")
-	waitForPairingStatus(t, managerB, accepted.PairingID, "pending_approval")
-	if _, err := managerA.Decide(created.PairingID, true); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := managerB.Decide(accepted.PairingID, true); err != nil {
-		t.Fatal(err)
-	}
 	waitForPairingStatus(t, managerA, created.PairingID, "paired")
 	waitForPairingStatus(t, managerB, accepted.PairingID, "paired")
 
@@ -74,29 +66,6 @@ func TestPairingRequiresFourWordCode(t *testing.T) {
 	defer manager.Close()
 	if _, err := manager.Accept("too-short"); err == nil {
 		t.Fatal("invalid pairing code was accepted")
-	}
-}
-
-func TestPairingRejectionDoesNotPersistTrust(t *testing.T) {
-	storeA, _ := OpenStore(testPaths(t))
-	storeB, _ := OpenStore(testPaths(t))
-	managerA := NewPairingManager(storeA)
-	managerB := NewPairingManager(storeB)
-	defer managerA.Close()
-	defer managerB.Close()
-	connA, connB := net.Pipe()
-	managerA.connector = func(context.Context, string, string) (pairingMessageConn, error) { return comm.New(connA), nil }
-	managerB.connector = func(context.Context, string, string) (pairingMessageConn, error) { return comm.New(connB), nil }
-	created, _ := managerA.Create()
-	accepted, _ := managerB.Accept(created.Code)
-	waitForPairingStatus(t, managerA, created.PairingID, "pending_approval")
-	waitForPairingStatus(t, managerB, accepted.PairingID, "pending_approval")
-	_, _ = managerA.Decide(created.PairingID, true)
-	_, _ = managerB.Decide(accepted.PairingID, false)
-	waitForPairingStatus(t, managerA, created.PairingID, "rejected")
-	waitForPairingStatus(t, managerB, accepted.PairingID, "rejected")
-	if len(storeA.Devices()) != 0 || len(storeB.Devices()) != 0 {
-		t.Fatal("rejected pairing persisted trust")
 	}
 }
 

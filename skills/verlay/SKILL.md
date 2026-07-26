@@ -16,12 +16,20 @@ statuses are stable enough for automation.
 
 ## Establish the local state
 
-1. Locate the executable with `command -v verlay`.
-2. If it is missing and the user asked to install Verlay, inspect the checked
-   out `scripts/bootstrap-agent.sh` before running it. Installation may download
-   a release, write under the user's home directory, and start a user service,
-   so follow the agent host's normal approval policy.
-3. Run:
+1. Identify the host operating system and CPU architecture before choosing an
+   installer. Never assume the host is Linux.
+2. Locate the executable with `command -v verlay` on Linux or
+   `Get-Command verlay` in Windows PowerShell.
+3. If it is missing and the user asked to install Verlay, inspect the matching
+   checked-out installer before running it:
+   - Linux: `scripts/bootstrap-agent.sh`
+   - Windows: `scripts/bootstrap-agent.ps1`
+
+   Never run the Linux installer on Windows. Never edit `go.mod` or downgrade
+   dependencies to work around a local toolchain. Installation may download a
+   toolchain or release, write under the user's home directory, and start a
+   daemon, so follow the agent host's normal approval policy.
+4. Run:
 
    ```sh
    verlay --json version
@@ -29,10 +37,10 @@ statuses are stable enough for automation.
    verlay --json doctor
    ```
 
-4. If the CLI exists but the daemon is unavailable on Linux, inspect
+5. If the CLI exists but the daemon is unavailable on Linux, inspect
    `systemctl --user status verlayd.service` before deciding whether to run
-   `verlay daemon start`. On other beta platforms, the daemon may need to run in
-   a dedicated terminal.
+   `verlay daemon start`. On Windows, run `verlayd.exe` or rerun the Windows
+   bootstrap; do not attempt Linux service commands.
 
 When the bundled references are available, read
 [references/command-reference.md](references/command-reference.md) for command
@@ -68,13 +76,10 @@ Pairing is a human trust ceremony, not unattended setup:
 verlay --json pair create
 verlay --json pair accept FOUR-WORD-CODE
 verlay --json pair list
-verlay --json pair approve PAIRING_ID
-verlay --json pair reject PAIRING_ID
 ```
 
-An agent may create or accept a short-lived code when the human requests it.
-Before approval, present the peer name and fingerprint to the human on both
-devices. Do not approve until the human confirms they match.
+An agent may create or accept a short-lived code only when the human explicitly
+requests it. Entering the code completes pairing; there is no second approval.
 
 ## Send files and folders
 
@@ -121,7 +126,8 @@ file merely because it arrived from a trusted device.
 The following commands change security-sensitive state:
 
 ```sh
-verlay --json pair approve PAIRING_ID
+verlay --json pair create
+verlay --json pair accept FOUR-WORD-CODE
 verlay --json devices authorize DEVICE --max-bytes BYTES --folders
 verlay --json devices require-approval DEVICE
 verlay --json devices revoke DEVICE_ID

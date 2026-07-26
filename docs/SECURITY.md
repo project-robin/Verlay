@@ -2,8 +2,9 @@
 
 ## Trust model
 
-Pairing is a one-time human ceremony. A short-lived four-word PAKE code connects
-the devices, and both users approve the peer's Ed25519 fingerprint. Subsequent
+Pairing is a one-time human ceremony. One device creates a short-lived
+four-word PAKE code and the other enters it. The API also reports the peer's
+Ed25519 fingerprint for identity inspection. Subsequent
 control connections use TLS 1.3 and pin the approved public keys.
 
 Pairing grants only the `files.request` capability. It does not grant remote
@@ -13,7 +14,7 @@ and, separately, folder permission.
 
 The following operations are human security boundaries:
 
-- approving or rejecting pairing;
+- creating or entering a pairing code;
 - enabling or removing automatic receive authorization;
 - changing relay infrastructure or credentials;
 - revoking a trusted device.

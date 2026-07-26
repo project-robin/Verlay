@@ -169,7 +169,6 @@ func (d *Daemon) routes() http.Handler {
 	mux.HandleFunc("GET /v1/pairings", d.handlePairings)
 	mux.HandleFunc("POST /v1/pairings/create", d.handleCreatePairing)
 	mux.HandleFunc("POST /v1/pairings/accept", d.handleAcceptPairing)
-	mux.HandleFunc("POST /v1/pairings/{pairingID}/decision", d.handlePairingDecision)
 	mux.HandleFunc("GET /v1/transfers", d.handleTransfers)
 	mux.HandleFunc("POST /v1/transfers/send", d.handleSendTransfer)
 	mux.HandleFunc("GET /v1/transfers/{transferID}", d.handleTransfer)
@@ -266,22 +265,6 @@ func (d *Daemon) handleAcceptPairing(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeEnvelope(w, http.StatusAccepted, Envelope{OK: true, Data: pairing})
-}
-
-func (d *Daemon) handlePairingDecision(w http.ResponseWriter, r *http.Request) {
-	var request struct {
-		Approve bool `json:"approve"`
-	}
-	if err := decodeRequest(r, &request); err != nil {
-		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
-		return
-	}
-	pairing, err := d.pairings.Decide(r.PathValue("pairingID"), request.Approve)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	writeEnvelope(w, http.StatusOK, Envelope{OK: true, Data: pairing})
 }
 
 func (d *Daemon) handleStatus(w http.ResponseWriter, _ *http.Request) {

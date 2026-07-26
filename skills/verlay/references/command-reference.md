@@ -24,15 +24,14 @@ verlay --json transfers show TRANSFER_ID
 ```sh
 verlay --json pair create
 verlay --json pair accept FOUR-WORD-CODE
-verlay --json pair approve PAIRING_ID
-verlay --json pair reject PAIRING_ID
 verlay --json devices rename DEVICE_ID FRIENDLY_NAME
 verlay --json devices revoke DEVICE_ID
 ```
 
 Pairing codes expire after ten minutes and are not long-term credentials.
 Friendly names are local labels; the stable device ID is the unambiguous
-automation identifier.
+automation identifier. Revocation is also local: run it on both devices when
+the human wants the relationship removed from both device lists.
 
 ## Transfer lifecycle
 

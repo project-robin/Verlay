@@ -83,6 +83,31 @@ func TestExternalIdentitySeedIsNotPersisted(t *testing.T) {
 	}
 }
 
+func TestConfiguredDeviceNamePersistsWithoutChangingIdentity(t *testing.T) {
+	paths := testPaths(t)
+	t.Setenv("VERLAY_DEVICE_NAME", "Map's Phone")
+	store, err := OpenStore(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := store.Identity()
+	if first.Name != "Map's Phone" {
+		t.Fatalf("configured device name was not used: %q", first.Name)
+	}
+
+	t.Setenv("VERLAY_DEVICE_NAME", "Editing Phone")
+	reopened, err := OpenStore(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reopened.Identity().Name != "Editing Phone" {
+		t.Fatalf("configured device name was not updated: %q", reopened.Identity().Name)
+	}
+	if reopened.Identity().DeviceID != first.DeviceID {
+		t.Fatal("renaming the device changed its stable identity")
+	}
+}
+
 func TestStoreRedactsRelationshipKeyAndRevokes(t *testing.T) {
 	store, err := OpenStore(testPaths(t))
 	if err != nil {

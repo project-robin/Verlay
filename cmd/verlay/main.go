@@ -19,13 +19,13 @@ import (
 	"time"
 
 	meshcore "github.com/project-robin/Verlay/internal/mesh"
+	"github.com/project-robin/Verlay/skills"
 )
 
 var version = "dev"
 
 type options struct {
 	json    bool
-	noInput bool
 	wait    bool
 	timeout time.Duration
 }
@@ -77,9 +77,9 @@ func run(rawArgs []string) int {
 			return printFailure(opts.json, &meshcore.APIError{Code: "invalid_usage", Message: "usage: verlay skill print", Retryable: false}, 2)
 		}
 		if opts.json {
-			return printSuccess(true, map[string]any{"skill": meshcore.AgentSkill()})
+			return printSuccess(true, map[string]any{"skill": skills.Verlay()})
 		}
-		fmt.Print(meshcore.AgentSkill())
+		fmt.Print(skills.Verlay())
 		return 0
 	}
 
@@ -303,10 +303,7 @@ func runPair(args []string, opts options, paths meshcore.Paths) int {
 	if len(args) == 1 && args[0] == "list" {
 		return callDaemon(opts, paths, http.MethodGet, "/v1/pairings")
 	}
-	if len(args) == 2 && (args[0] == "approve" || args[0] == "reject") {
-		return callDaemonWithBody(opts, paths, http.MethodPost, "/v1/pairings/"+url.PathEscape(args[1])+"/decision", map[string]any{"approve": args[0] == "approve"})
-	}
-	return printFailure(opts.json, &meshcore.APIError{Code: "invalid_usage", Message: "usage: verlay pair create|accept CODE|list|approve ID|reject ID", Retryable: false}, 2)
+	return printFailure(opts.json, &meshcore.APIError{Code: "invalid_usage", Message: "usage: verlay pair create|accept CODE|list", Retryable: false}, 2)
 }
 
 func callDaemon(opts options, paths meshcore.Paths, method, path string) int {
@@ -337,8 +334,6 @@ func parseOptions(args []string) ([]string, options, error) {
 			return filtered, opts, nil
 		case args[i] == "--json":
 			opts.json = true
-		case args[i] == "--no-input":
-			opts.noInput = true
 		case args[i] == "--wait":
 			opts.wait = true
 		case args[i] == "--timeout":
@@ -466,15 +461,15 @@ func exitCode(err error) int {
 func commandSchema() map[string]any {
 	return map[string]any{
 		"apiVersion":    meshcore.APIVersion,
-		"globalOptions": []string{"--json", "--no-input", "--wait", "--timeout DURATION"},
+		"globalOptions": []string{"--json", "--wait", "--timeout DURATION"},
 		"commands": []string{
 			"status", "doctor", "daemon start|stop|restart",
 			"relay show|set HOST:PORT --password-stdin",
-			"pair create|accept|list|approve|reject", "devices list|show|rename|revoke|authorize|require-approval", "schema", "version",
+			"pair create|accept|list", "devices list|show|rename|revoke|authorize|require-approval", "schema", "version",
 			"send DEVICE PATH [--exclude PATHS]", "transfers list|show|approve|reject|cancel",
 			"skill print",
 		},
-		"securityBoundaries": []string{"pair approve", "pair reject", "transfers approve", "transfers reject", "devices authorize", "devices require-approval", "devices revoke", "relay set"},
+		"securityBoundaries": []string{"pair create", "pair accept", "transfers approve", "transfers reject", "devices authorize", "devices require-approval", "devices revoke", "relay set"},
 		"transport": map[string]any{
 			"current":            "live encrypted relay",
 			"storesFiles":        false,
@@ -487,7 +482,7 @@ func commandSchema() map[string]any {
 const helpText = `verlay - secure cross-device CLI for Verlay
 
 Usage:
-  verlay [--json] [--no-input] [--wait] [--timeout 15s] COMMAND
+  verlay [--json] [--wait] [--timeout 15s] COMMAND
 
 Commands:
   status                         Show daemon and device status
@@ -499,7 +494,6 @@ Commands:
   pair create                    Create a ten-minute pairing code
   pair accept CODE               Connect using a pairing code
   pair list                      List current pairing requests
-  pair approve|reject ID         Decide a pending pairing request
   devices list                   List trusted devices
   devices show DEVICE_ID         Show one trusted device
   devices rename DEVICE_ID NAME  Assign a local name to a trusted device
