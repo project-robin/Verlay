@@ -9,6 +9,8 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.webkit.MimeTypeMap
 import java.io.File
+import java.net.Inet4Address
+import java.net.InetAddress
 import java.security.KeyStore
 import java.security.SecureRandom
 import java.util.Base64
@@ -29,7 +31,6 @@ data class MeshPairing(
     val status: String,
     val code: String? = null,
     val peerName: String? = null,
-    val verificationCode: String? = null,
     val error: String? = null,
 )
 
@@ -71,6 +72,9 @@ data class MeshCommandResult(
 )
 
 object MeshRuntime {
+    private const val PUBLIC_RELAY_HOST = "croc.schollz.com"
+    private const val PUBLIC_RELAY_PORT = 9009
+    private const val PUBLIC_RELAY = "$PUBLIC_RELAY_HOST:$PUBLIC_RELAY_PORT"
     private const val KEY_ALIAS = "mesh-device-identity"
     private const val PREFS = "mesh_runtime"
     private const val SEED_CIPHERTEXT = "identity_seed_ciphertext"
@@ -167,9 +171,6 @@ object MeshRuntime {
 
     fun createPairing(context: Context): MeshCommandResult = command(context, "pair", "create")
     fun acceptPairing(context: Context, code: String): MeshCommandResult = command(context, "pair", "accept", code)
-    fun decidePairing(context: Context, id: String, approve: Boolean): MeshCommandResult =
-        command(context, "pair", if (approve) "approve" else "reject", id)
-
     fun revokeDevice(context: Context, id: String): MeshCommandResult =
         command(context, "devices", "revoke", id)
 
@@ -201,7 +202,11 @@ object MeshRuntime {
         if (!config.exists() || refreshPublicRelay) {
             val relayAddress = if (refreshPublicRelay) {
                 try {
-                    resolvePublicRelayAddress()
+                    val address = InetAddress.getAllByName(PUBLIC_RELAY_HOST)
+                        .filterIsInstance<Inet4Address>()
+                        .firstOrNull()
+                        ?: error("Android could not resolve the Verlay relay.")
+                    "${address.hostAddress}:$PUBLIC_RELAY_PORT"
                 } catch (error: Exception) {
                     throw IllegalStateException(
                         "Could not resolve the public relay (${error.javaClass.simpleName}). Check the phone's network and try again.",
@@ -209,7 +214,7 @@ object MeshRuntime {
                     )
                 }
             } else {
-                CrocCommandFactory.PUBLIC_RELAY
+                PUBLIC_RELAY
             }
             config.writeText(
                 JSONObject()
@@ -318,7 +323,6 @@ private fun JSONArray?.toPairings(): List<MeshPairing> = buildList {
                 status = item.optString("status"),
                 code = item.stringOrNull("code"),
                 peerName = item.stringOrNull("peerName"),
-                verificationCode = item.stringOrNull("verificationCode"),
                 error = item.stringOrNull("errorMessage"),
             ),
         )
@@ -353,3 +357,14 @@ private fun JSONArray?.toTransfers(): List<MeshTransfer> = buildList {
 
 private fun JSONObject.stringOrNull(key: String): String? =
     optString(key).takeIf { has(key) && it.isNotBlank() && it != "null" }
+
+object SafeFileNames {
+    fun fromDisplayName(displayName: String?): String {
+        val cleaned = displayName
+            ?.replace(Regex("[\\p{Cc}/\\\\]"), "_")
+            ?.trim()
+            ?.take(180)
+            .orEmpty()
+        return cleaned.takeUnless { it.isBlank() || it == "." || it == ".." } ?: "transfer.bin"
+    }
+}

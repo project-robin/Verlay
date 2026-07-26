@@ -1,17 +1,13 @@
 package com.croc.prototype
 
 import android.Manifest
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.database.Cursor
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.OpenableColumns
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -86,11 +82,8 @@ private fun CrocPrototypeTheme(content: @Composable () -> Unit) {
 @Composable
 private fun TransferScreen() {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val snapshot by TransferStore.state.collectAsStateWithLifecycle()
     val meshSnapshot by MeshStore.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
-    var receiveCode by rememberSaveable { mutableStateOf("") }
-    var validationMessage by remember { mutableStateOf<String?>(null) }
     var meshPairingCode by rememberSaveable { mutableStateOf("") }
     var generatedMeshCode by rememberSaveable { mutableStateOf<String?>(null) }
     var meshMessage by remember { mutableStateOf<String?>(null) }
@@ -106,20 +99,6 @@ private fun TransferScreen() {
             PackageManager.PERMISSION_GRANTED
         ) {
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-        }
-    }
-
-    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) {
-            requestNotificationPermission()
-            val name = queryDisplayName(context, uri)
-            startTransferService(
-                context,
-                Intent(context, TransferService::class.java)
-                    .setAction(TransferService.ACTION_SEND)
-                    .putExtra(TransferService.EXTRA_URI, uri.toString())
-                    .putExtra(TransferService.EXTRA_FILE_NAME, name),
-            )
         }
     }
 
@@ -206,16 +185,6 @@ private fun TransferScreen() {
                         }
                     }
                 },
-                onPairDecision = { pairing, approve ->
-                    scope.launch {
-                        val result = withContext(Dispatchers.IO) { MeshRuntime.decidePairing(context, pairing.id, approve) }
-                        meshMessage = if (result.ok) {
-                            if (approve) "Approved. Waiting for the other device…" else "Pairing rejected."
-                        } else {
-                            result.errorMessage
-                        }
-                    }
-                },
                 onRemoveDevice = { device ->
                     scope.launch {
                         val result = withContext(Dispatchers.IO) { MeshRuntime.revokeDevice(context, device.id) }
@@ -233,89 +202,6 @@ private fun TransferScreen() {
                     }
                 },
             )
-
-            HorizontalDivider(Modifier.padding(vertical = 28.dp))
-            Text("Legacy Croc code transfer", style = MaterialTheme.typography.titleMedium)
-            Text(
-                "Kept for compatibility while the paired-device beta is tested.",
-                modifier = Modifier.padding(top = 4.dp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
-            if (snapshot.status != TransferStatus.IDLE) {
-                Spacer(Modifier.height(24.dp))
-                TransferStatusCard(
-                    snapshot = snapshot,
-                    onCopyCode = {
-                        snapshot.code?.let { copyCode(context, it) }
-                    },
-                    onCancel = {
-                        startTransferService(
-                            context,
-                            Intent(context, TransferService::class.java)
-                                .setAction(TransferService.ACTION_CANCEL),
-                        )
-                    },
-                    onReset = TransferStore::reset,
-                )
-            }
-
-            Spacer(Modifier.height(28.dp))
-            Text("Send from this phone", style = MaterialTheme.typography.titleMedium)
-            Text(
-                "Choose a file, then enter the shown code on your computer.",
-                modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Button(
-                onClick = { filePicker.launch(arrayOf("*/*")) },
-                enabled = !snapshot.isActive,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Choose a file")
-            }
-
-            HorizontalDivider(Modifier.padding(vertical = 28.dp))
-
-            Text("Receive on this phone", style = MaterialTheme.typography.titleMedium)
-            Text(
-                "Start croc on your computer, then enter its code below.",
-                modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            OutlinedTextField(
-                value = receiveCode,
-                onValueChange = {
-                    receiveCode = it
-                    validationMessage = null
-                },
-                label = { Text("Croc code") },
-                supportingText = validationMessage?.let { message -> { Text(message) } },
-                singleLine = true,
-                enabled = !snapshot.isActive,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(12.dp))
-            Button(
-                onClick = {
-                    val code = receiveCode.trim()
-                    if (code.length < 6) {
-                        validationMessage = "Enter the complete code from the sender."
-                    } else {
-                        requestNotificationPermission()
-                        startTransferService(
-                            context,
-                            Intent(context, TransferService::class.java)
-                                .setAction(TransferService.ACTION_RECEIVE)
-                                .putExtra(TransferService.EXTRA_CODE, code),
-                        )
-                    }
-                },
-                enabled = !snapshot.isActive,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Receive file")
-            }
         }
     }
 }
@@ -331,47 +217,11 @@ internal fun MeshAlphaSection(
     onStop: () -> Unit,
     onCreatePairing: () -> Unit,
     onAcceptPairing: () -> Unit,
-    onPairDecision: (MeshPairing, Boolean) -> Unit,
     onRemoveDevice: (MeshDevice) -> Unit,
     onSendToDevice: (MeshDevice) -> Unit,
     onTransferDecision: (MeshTransfer, Boolean) -> Unit,
 ) {
-    val pendingPairing = snapshot.pairings.firstOrNull { it.status == "pending_approval" }
     var deviceToRemove by remember { mutableStateOf<MeshDevice?>(null) }
-
-    pendingPairing?.let { pairing ->
-        AlertDialog(
-            onDismissRequest = {},
-            title = { Text("Verify new device") },
-            text = {
-                Column {
-                    Text("${pairing.peerName ?: "New device"} wants to pair with this phone.")
-                    Text(
-                        pairing.verificationCode ?: "Update Verlay on both devices to verify this pairing.",
-                        modifier = Modifier.padding(top = 14.dp),
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Text(
-                        "Ask the other device to show its verification code. Approve only if both codes are identical.",
-                        modifier = Modifier.padding(top = 10.dp),
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = { onPairDecision(pairing, true) },
-                    enabled = pairing.verificationCode != null,
-                ) {
-                    Text("Codes match")
-                }
-            },
-            dismissButton = {
-                OutlinedButton(onClick = { onPairDecision(pairing, false) }) {
-                    Text("Reject")
-                }
-            },
-        )
-    }
 
     deviceToRemove?.let { device ->
         AlertDialog(
@@ -503,72 +353,6 @@ internal fun MeshAlphaSection(
     }
 }
 
-@Composable
-private fun TransferStatusCard(
-    snapshot: TransferSnapshot,
-    onCopyCode: () -> Unit,
-    onCancel: () -> Unit,
-    onReset: () -> Unit,
-) {
-    val containerColor = when (snapshot.status) {
-        TransferStatus.FAILED -> MaterialTheme.colorScheme.errorContainer
-        TransferStatus.COMPLETED -> Color(0xFFE0F2E8)
-        else -> MaterialTheme.colorScheme.surfaceVariant
-    }
-    Card(
-        colors = CardDefaults.cardColors(containerColor = containerColor),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(Modifier.padding(18.dp)) {
-            Text(
-                text = statusTitle(snapshot.status),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(snapshot.message, modifier = Modifier.padding(top = 4.dp))
-            snapshot.fileName?.let {
-                Text(it, modifier = Modifier.padding(top = 8.dp), fontWeight = FontWeight.Medium)
-            }
-            snapshot.code?.let { code ->
-                Text(
-                    text = code,
-                    modifier = Modifier.padding(top = 16.dp),
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                )
-                OutlinedButton(onClick = onCopyCode, modifier = Modifier.padding(top = 8.dp)) {
-                    Text("Copy code")
-                }
-            }
-            snapshot.savedLocation?.let {
-                Text("Saved to $it", modifier = Modifier.padding(top = 8.dp))
-            }
-            Spacer(Modifier.height(14.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (snapshot.isActive) {
-                    OutlinedButton(onClick = onCancel) { Text("Cancel") }
-                } else {
-                    OutlinedButton(onClick = onReset) { Text("Done") }
-                }
-            }
-        }
-    }
-}
-
-private fun statusTitle(status: TransferStatus): String = when (status) {
-    TransferStatus.IDLE -> "Ready"
-    TransferStatus.PREPARING -> "Preparing"
-    TransferStatus.WAITING -> "Waiting"
-    TransferStatus.TRANSFERRING -> "Transferring"
-    TransferStatus.COMPLETED -> "Complete"
-    TransferStatus.FAILED -> "Couldn’t transfer"
-    TransferStatus.CANCELLED -> "Cancelled"
-}
-
-private fun startTransferService(context: Context, intent: Intent) {
-    ContextCompat.startForegroundService(context, intent)
-}
-
 private fun startMeshService(context: Context, start: Boolean) {
     val intent = Intent(context, MeshDaemonService::class.java).setAction(
         if (start) MeshDaemonService.ACTION_START else MeshDaemonService.ACTION_STOP,
@@ -586,18 +370,10 @@ private fun stageMeshFile(context: Context, uri: Uri, displayName: String?): Fil
     return destination
 }
 
-private fun copyCode(context: Context, code: String) {
-    val clipboard = context.getSystemService(ClipboardManager::class.java)
-    clipboard.setPrimaryClip(ClipData.newPlainText("Croc code", code))
-    Toast.makeText(context, "Code copied", Toast.LENGTH_SHORT).show()
-}
-
 private fun queryDisplayName(context: Context, uri: Uri): String? {
-    var cursor: Cursor? = null
-    return try {
-        cursor = context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
-        if (cursor?.moveToFirst() == true) cursor.getString(0) else null
-    } finally {
-        cursor?.close()
-    }
+    return context.contentResolver
+        .query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+        ?.use { cursor ->
+            if (cursor.moveToFirst()) cursor.getString(0) else null
+        }
 }

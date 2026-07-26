@@ -24,8 +24,6 @@ verlay --json transfers show TRANSFER_ID
 ```sh
 verlay --json pair create
 verlay --json pair accept FOUR-WORD-CODE
-verlay --json pair approve PAIRING_ID
-verlay --json pair reject PAIRING_ID
 verlay --json devices rename DEVICE_ID FRIENDLY_NAME
 verlay --json devices revoke DEVICE_ID
 ```

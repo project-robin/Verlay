@@ -5,15 +5,15 @@ import (
 	"testing"
 	"time"
 
-	meshcore "github.com/project-robin/Verlay/internal/mesh"
+	"github.com/project-robin/Verlay/skills"
 )
 
 func TestParseOptionsAnywhere(t *testing.T) {
-	args, options, err := parseOptions([]string{"status", "--json", "--timeout=4s", "--no-input"})
+	args, options, err := parseOptions([]string{"status", "--json", "--timeout=4s"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(args) != 1 || args[0] != "status" || !options.json || !options.noInput || options.timeout != 4*time.Second {
+	if len(args) != 1 || args[0] != "status" || !options.json || options.timeout != 4*time.Second {
 		t.Fatalf("unexpected parse result: args=%v options=%#v", args, options)
 	}
 }
@@ -53,7 +53,7 @@ func TestAgentSkillAndSchemaExposeAutomationContract(t *testing.T) {
 			t.Fatalf("schema omitted %q", command)
 		}
 	}
-	skill := meshcore.AgentSkill()
+	skill := skills.Verlay()
 	if !strings.Contains(skill, "Never run them") || !strings.Contains(skill, "verlay --json") {
 		t.Fatal("embedded skill omitted automation or approval guidance")
 	}

@@ -23,11 +23,6 @@
         </activity>
 
         <service
-            android:name=".TransferService"
-            android:exported="false"
-            android:foregroundServiceType="dataSync" />
-
-        <service
             android:name=".MeshDaemonService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />

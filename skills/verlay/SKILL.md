@@ -76,14 +76,10 @@ Pairing is a human trust ceremony, not unattended setup:
 verlay --json pair create
 verlay --json pair accept FOUR-WORD-CODE
 verlay --json pair list
-verlay --json pair approve PAIRING_ID
-verlay --json pair reject PAIRING_ID
 ```
 
-An agent may create or accept a short-lived code when the human requests it.
-Before approval, present the peer name and shared `verificationCode` to the
-human on both devices. Do not approve until the human confirms that the two
-verification codes are identical.
+An agent may create or accept a short-lived code only when the human explicitly
+requests it. Entering the code completes pairing; there is no second approval.
 
 ## Send files and folders
 
@@ -130,7 +126,8 @@ file merely because it arrived from a trusted device.
 The following commands change security-sensitive state:
 
 ```sh
-verlay --json pair approve PAIRING_ID
+verlay --json pair create
+verlay --json pair accept FOUR-WORD-CODE
 verlay --json devices authorize DEVICE --max-bytes BYTES --folders
 verlay --json devices require-approval DEVICE
 verlay --json devices revoke DEVICE_ID

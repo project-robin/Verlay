@@ -5,7 +5,7 @@ repository="${VERLAY_REPOSITORY:-project-robin/Verlay}"
 version="${VERLAY_VERSION:-latest}"
 install_runtime=1
 install_skill=1
-start_service="${MESH_INSTALL_START_SERVICE:-1}"
+start_service="${VERLAY_INSTALL_START_SERVICE:-1}"
 skill_method="${VERLAY_SKILL_METHOD:-auto}"
 install_source="${VERLAY_INSTALL_SOURCE:-auto}"
 declare -a agent_hosts=()
@@ -184,7 +184,7 @@ if [[ "$install_skill" == "1" ]]; then
   fi
 fi
 
-verlay_binary="${VERLAY_INSTALL_ROOT:-${MESH_INSTALL_ROOT:-$HOME/.local}}/bin/verlay"
+verlay_binary="${VERLAY_INSTALL_ROOT:-$HOME/.local}/bin/verlay"
 if [[ "$install_runtime" == "1" ]]; then
   "$verlay_binary" --json version
   "$verlay_binary" --json schema >/dev/null

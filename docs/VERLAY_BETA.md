@@ -1,7 +1,7 @@
 # Verlay Linux–Android production beta
 
-Verlay is the daemon-centered, CLI-first layer being developed alongside
-Croc. The existing `croc` command and prototype applications remain available.
+Verlay is the daemon-centered, CLI-first product built on Croc's transfer
+foundation.
 This milestone targets Linux, Android, and a minimal Windows CLI beta. macOS,
 iOS, and native Windows service packaging are deliberately deferred.
 
@@ -9,7 +9,7 @@ iOS, and native Windows service packaging are deliberately deferred.
 
 - Each installation owns a persistent Ed25519 identity.
 - A four-word, ten-minute PAKE code bootstraps pairing.
-- Both devices must display the same session verification code and approve it.
+- Creating and entering the same short-lived code authorizes the pairing.
 - Future control sessions use TLS 1.3 and pin the paired Ed25519 keys.
 - Each transfer derives a distinct Croc secret from the paired relationship key
   and transfer ID. Secrets are delivered to the child process through private
@@ -56,14 +56,15 @@ the toolchain declared by the repository. Do not lower the `go` directive or
 downgrade dependencies to make an older local toolchain compile.
 
 After a release is published, Windows can instead use
-`verlay-windows-amd64.exe` and `verlayd-windows-amd64.exe` from that release.
+`verlay-windows-amd64.exe` from that release.
 Because beta binaries are not code-signed, Windows may ask the user to confirm
 running them.
 
 Keep the daemon open in the first PowerShell window:
 
 ```powershell
-.\verlayd-windows-amd64.exe
+Copy-Item .\verlay-windows-amd64.exe .\verlayd.exe
+.\verlayd.exe
 ```
 
 Use a second PowerShell window for pairing and transfers:
@@ -71,7 +72,6 @@ Use a second PowerShell window for pairing and transfers:
 ```powershell
 .\verlay-windows-amd64.exe --json pair accept FOUR-WORD-CODE
 .\verlay-windows-amd64.exe --json pair list
-.\verlay-windows-amd64.exe --json pair approve PAIRING_ID
 .\verlay-windows-amd64.exe --json devices list
 .\verlay-windows-amd64.exe --json send FEDORA C:\Users\friend\Videos\clip.mp4 --wait --timeout 2h
 ```
@@ -93,14 +93,11 @@ On one device:
 verlay --json pair create
 ```
 
-Enter the returned code on the other device, inspect the shared
-`verificationCode` on both devices, and approve both pending pairing IDs only
-when those codes are identical:
+Enter the returned code on the other device:
 
 ```sh
 verlay --json pair accept word-word-word-word
 verlay --json pair list
-verlay --json pair approve PAIRING_ID
 ```
 
 ## Autonomous receiving
@@ -177,10 +174,10 @@ live; durable storage is a separate, optional future product decision.
 
 ## Beta checklist
 
-- [x] Preserve the existing `croc` command and prototype transfer UI.
+- [x] Preserve the Croc transport and relay foundation.
 - [x] Add the standalone Go `verlay` CLI and single-instance `verlayd` daemon.
 - [x] Persist Ed25519 identity and trusted-device relationships securely.
-- [x] Add four-word PAKE pairing with a shared verification code and bilateral approval.
+- [x] Add one-step four-word PAKE pairing.
 - [x] Add TLS 1.3 pinned control sessions and policy-bounded receive approval.
 - [x] Transfer files and native folder trees through the configurable Croc
   relay without putting secrets in arguments, environment variables, or logs.

@@ -111,8 +111,7 @@ class MeshDaemonService : Service() {
             while (isActive && meshEnabled()) {
                 val snapshot = MeshRuntime.refresh(this@MeshDaemonService)
                 MeshStore.update(snapshot)
-                val pending = snapshot.transfers.count { it.status == "pending_approval" } +
-                    snapshot.pairings.count { it.status == "pending_approval" }
+                val pending = snapshot.transfers.count { it.status == "pending_approval" }
                 getSystemService(NotificationManager::class.java).notify(
                     NOTIFICATION_ID,
                     notification(if (pending > 0) "$pending request(s) need approval" else snapshot.message),

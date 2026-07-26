@@ -37,10 +37,10 @@ apps/android/app/build/
 apps/android/local.properties
 apps/android/.idea/
 
-# Tauri desktop prototype builds and generated sidecar
+# Leftover files from the removed desktop prototype
 apps/desktop/node_modules/
 apps/desktop/src-tauri/target/
-apps/desktop/src-tauri/binaries/croc-*
+apps/desktop/src-tauri/binaries/
 apps/desktop/src-tauri/gen/
 
 # Local benchmark downloads and generated payloads

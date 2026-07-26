@@ -6,52 +6,12 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
 class MeshPairingUiTest {
     @get:Rule
     val compose = createAndroidComposeRule<MainActivity>()
-
-    @Test
-    fun pendingPairingRequiresVisibleMatchingCodeConfirmation() {
-        var approved = false
-        compose.setContent {
-            MaterialTheme {
-                MeshAlphaSection(
-                    snapshot = MeshSnapshot(
-                        availability = MeshAvailability.AVAILABLE,
-                        pairings = listOf(
-                            MeshPairing(
-                                id = "pair-1",
-                                status = "pending_approval",
-                                peerName = "Editing Laptop",
-                                verificationCode = "1234-5678-90AB-CDEF-1234",
-                            ),
-                        ),
-                    ),
-                    pairingCode = "",
-                    generatedCode = null,
-                    message = null,
-                    onPairingCodeChange = {},
-                    onStart = {},
-                    onStop = {},
-                    onCreatePairing = {},
-                    onAcceptPairing = {},
-                    onPairDecision = { _, decision -> approved = decision },
-                    onRemoveDevice = {},
-                    onSendToDevice = {},
-                    onTransferDecision = { _, _ -> },
-                )
-            }
-        }
-
-        compose.onNodeWithText("Verify new device").assertIsDisplayed()
-        compose.onNodeWithText("1234-5678-90AB-CDEF-1234").assertIsDisplayed()
-        compose.onNodeWithText("Codes match").performClick()
-        assertTrue(approved)
-    }
 
     @Test
     fun removingDeviceRequiresConfirmation() {
@@ -71,7 +31,6 @@ class MeshPairingUiTest {
                     onStop = {},
                     onCreatePairing = {},
                     onAcceptPairing = {},
-                    onPairDecision = { _, _ -> },
                     onRemoveDevice = { removedDevice = it.id },
                     onSendToDevice = {},
                     onTransferDecision = { _, _ -> },
