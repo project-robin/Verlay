@@ -195,8 +195,36 @@ func TestReceiveAuthorizationIsExplicitAndPersists(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if required.ReceivePolicy != nil {
-		t.Fatalf("manual approval did not clear policy: %#v", required.ReceivePolicy)
+	if required.ReceivePolicy == nil || required.ReceivePolicy.AutoReceive {
+		t.Fatalf("manual approval was not persisted: %#v", required.ReceivePolicy)
+	}
+	manual, err := OpenStore(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, _ = manual.Device(device.DeviceID)
+	if stored.ReceivePolicy == nil || stored.ReceivePolicy.AutoReceive {
+		t.Fatalf("manual approval did not survive restart: %#v", stored.ReceivePolicy)
+	}
+}
+
+func TestLegacyPairedDeviceMigratesToTrustedInbox(t *testing.T) {
+	paths := testPaths(t)
+	store, err := OpenStore(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	device := Device{DeviceID: "legacy", PublicKey: "public", RelationshipKey: "secret"}
+	if err := store.PutDevice(device); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := OpenStore(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	migrated, _ := reopened.Device(device.DeviceID)
+	if migrated.ReceivePolicy == nil || !migrated.ReceivePolicy.AutoReceive {
+		t.Fatalf("legacy device was not migrated: %#v", migrated.ReceivePolicy)
 	}
 }
 

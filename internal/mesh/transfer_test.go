@@ -31,8 +31,12 @@ func (e *fakeEngine) Receive(_ context.Context, _, _, _, destination string) err
 	return os.WriteFile(filepath.Join(destination, e.fileName), e.content, 0o600)
 }
 
-func TestApprovedTransferCrossesAuthenticatedControlChannel(t *testing.T) {
-	storeA, storeB, _, deviceB := pairedTestStores(t)
+func TestAuthorizedTransferCrossesAuthenticatedControlChannelWithoutPolling(t *testing.T) {
+	storeA, storeB, deviceA, deviceB := pairedTestStores(t)
+	storeB.config.ReceiveDir = t.TempDir()
+	if _, err := storeB.AuthorizeReceive(deviceA.DeviceID, DefaultTrustedTransferLimit, true); err != nil {
+		t.Fatal(err)
+	}
 	engineA := &fakeEngine{}
 	engineB := &fakeEngine{content: []byte("hello mesh"), fileName: "payload.txt"}
 	transfersA := NewTransferManager(storeA, engineA)
@@ -77,13 +81,8 @@ func TestApprovedTransferCrossesAuthenticatedControlChannel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	incoming := waitForIncomingTransfer(t, transfersB)
-	outDir := t.TempDir()
-	if _, err := transfersB.Decide(incoming.TransferID, true, outDir); err != nil {
-		t.Fatal(err)
-	}
 	waitForTransferStatus(t, transfersA, outgoing.TransferID, "completed")
-	completed := waitForTransferStatus(t, transfersB, incoming.TransferID, "completed")
+	completed := waitForTransferStatus(t, transfersB, outgoing.TransferID, "completed")
 	received, err := os.ReadFile(completed.SavedPath)
 	if err != nil {
 		t.Fatal(err)

@@ -25,7 +25,7 @@ import (
 
 const (
 	pairingTTL             = 10 * time.Minute
-	pairingProtocolVersion = 3
+	pairingProtocolVersion = 4
 )
 
 type PairingView struct {
@@ -184,6 +184,7 @@ func (m *PairingManager) run(session *pairingSession) {
 	})
 	peer.RelationshipKey = base64.RawURLEncoding.EncodeToString(relationshipKey)
 	peer.Capabilities = []string{"files.request"}
+	peer.ReceivePolicy = m.store.defaultReceivePolicy(peer)
 	peer.PairedAt = time.Now().UTC()
 	peer.LastSeenAt = peer.PairedAt
 	if err := m.store.PutDevice(peer); err != nil {

@@ -16,10 +16,9 @@ iOS, and native Windows service packaging are deliberately deferred.
   standard input, never through arguments, environment variables, or logs.
 - The relay forwards live encrypted traffic. It stores no files and cannot read
   control messages or file contents; it can observe connection metadata.
-- Newly paired devices receive only `files.request`. Incoming transfers require
-  approval until a human grants that device a size-bounded receive policy.
-- Auto-receive uses a fixed per-device inbox below the configured receive root;
-  folder permission is granted separately.
+- Newly paired devices receive `files.request` and a fixed per-device inbox
+  capped at 100 GiB per file or folder. Pairing is the human authorization.
+- The receive policy can be reduced, expanded, or returned to manual approval.
 
 The Linux identity is stored in the user's data directory with mode `0600`.
 Android wraps its identity seed with Android Keystore and passes it only to the
@@ -51,7 +50,8 @@ bootstrap from PowerShell:
 ```
 
 It builds the unchanged dependency graph, installs the CLI, daemon, and Agent
-Skill, and verifies the runtime. It requires Go 1.21 or newer so Go can select
+Skill, registers the daemon with Windows Task Scheduler for login persistence,
+and verifies the runtime. It requires Go 1.21 or newer so Go can select
 the toolchain declared by the repository. Do not lower the `go` directive or
 downgrade dependencies to make an older local toolchain compile.
 
@@ -60,7 +60,8 @@ After a release is published, Windows can instead use
 Because beta binaries are not code-signed, Windows may ask the user to confirm
 running them.
 
-Keep the daemon open in the first PowerShell window:
+For a manually downloaded release binary, keep the daemon open in one
+PowerShell window:
 
 ```powershell
 Copy-Item .\verlay-windows-amd64.exe .\verlayd.exe
@@ -76,10 +77,8 @@ Use a second PowerShell window for pairing and transfers:
 .\verlay-windows-amd64.exe --json send FEDORA C:\Users\friend\Videos\clip.mp4 --wait --timeout 2h
 ```
 
-For automatic Linux-to-Windows delivery, the Windows user must first grant the
-paired Linux device a bounded policy with `devices authorize`. The Windows beta
-does not install a background service; closing its daemon window makes that
-computer unavailable.
+The source bootstrap manages the background daemon. Do not restart it while a
+pairing or transfer is active.
 
 After the first Verlay release, the same installer can be piped from the
 repository's raw GitHub URL. It downloads a checksum-verified Linux binary. Set
@@ -102,37 +101,36 @@ verlay --json pair list
 
 ## Autonomous receiving
 
-Pair once manually, then have the receiving user explicitly grant a bounded
-policy:
+Pairing grants a dedicated inbox with a 100 GiB per-transfer limit. Change the
+limit when needed:
 
 ```sh
 verlay --json devices authorize EDITOR_TWO --max-bytes 10737418240 --folders
 ```
 
-Files from that device are then delivered to its dedicated inbox without a
-second click. Revoke the grant while keeping the pairing with:
+Files from that device are delivered without a second click. Return to manual
+approval while keeping the pairing with:
 
 ```sh
 verlay --json devices require-approval EDITOR_TWO
 ```
 
-Pairing, authorization, relay changes, and revocation are human security
-boundaries. The embedded agent skill tells agents not to cross them without
-explicit instruction.
+Pairing, receive-policy changes, relay changes, and revocation are human
+security boundaries. The embedded agent skill tells agents not to cross them
+without explicit instruction.
 
 ## Sending files and folders
 
 ```sh
 verlay --json devices list
-verlay --json send EDITOR_TWO /path/to/video.mp4
-verlay --json send EDITOR_TWO /path/to/project --exclude .git,node_modules
+verlay --json --wait --timeout 2h send EDITOR_TWO /path/to/video.mp4
+verlay --json --wait --timeout 2h send EDITOR_TWO /path/to/project --exclude .git,node_modules
 verlay --json transfers list
 verlay --json transfers approve TRANSFER_ID --out "$HOME/Downloads/Verlay"
 ```
 
-Use `--wait --timeout 30m` on `verlay send` when an agent should remain attached
-until the transfer reaches a terminal state. A wait timeout does not cancel the
-durable queue entry.
+Agents should use `--wait` and report success only at `completed`. A wait
+timeout does not cancel the durable queue entry.
 
 The scheduler persists outgoing jobs, processes them FIFO, permits two
 concurrent transfers globally, and permits one active transfer per peer. An

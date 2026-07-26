@@ -37,7 +37,7 @@ The current beta provides:
 | --- | --- |
 | Linux | CLI and background daemon; physically tested with Android |
 | Verlay Mobile (Android) | Functional beta app; bidirectional single-file transfer tested |
-| Windows | CLI build available; background service and physical verification pending |
+| Windows | CLI and login-started background daemon; physical verification pending |
 | macOS and Verlay Mobile (iOS) | Planned, not currently supported |
 
 Folder transfer, recovery after interruption, concurrent multi-peer transfers,
@@ -56,9 +56,8 @@ section in README.md. On Linux, inspect and run scripts/bootstrap-agent.sh. On
 Windows, inspect and run scripts/bootstrap-agent.ps1 from PowerShell. Do not run
 the Linux installer on Windows, do not edit go.mod, and do not downgrade
 dependencies. Verify `verlay --json status` and `verlay --json doctor`, then
-tell me it is ready. Stop before pairing,
-enabling automatic receiving, or changing the relay so I can authorize those
-security decisions. If the operating system is unsupported, stop and explain
+tell me it is ready. Stop before pairing or changing the relay so I can
+authorize those security decisions. If the operating system is unsupported, stop and explain
 that instead of improvising an installation.
 ```
 
@@ -78,8 +77,7 @@ terminal-capable coding agent:
 Install Verlay on this Linux computer from https://github.com/project-robin/Verlay.
 Inspect scripts/bootstrap-agent.sh before running it. Run the bootstrap,
 verify verlay status and doctor, and tell me when it is ready. Stop before
-pairing, enabling automatic receiving, or changing
-the relay so I can authorize those security decisions.
+pairing or changing the relay so I can authorize those security decisions.
 ```
 
 The agent can clone the repository and complete the installation. The only
@@ -162,26 +160,22 @@ verlay --json devices list
 ```
 
 Creating or entering a pairing code is an intentional human security boundary.
-Agents should not do either without explicit instruction.
+Pairing also authorizes files and folders from that device to its dedicated
+inbox, up to 100 GiB per transfer. Agents should not pair without explicit
+instruction.
 
 ## Send files and folders
 
-Send a file:
+Send a file and wait until delivery is verified:
 
 ```sh
-verlay --json send EDITOR_TWO /path/to/video.mp4
+verlay --json --wait --timeout 2h send EDITOR_TWO /path/to/video.mp4
 ```
 
 Send a folder while excluding generated content:
 
 ```sh
-verlay --json send EDITOR_TWO /path/to/project --exclude .git,node_modules
-```
-
-Wait for a terminal result in an agent workflow:
-
-```sh
-verlay --json send EDITOR_TWO /path/to/result.zip --wait --timeout 2h
+verlay --json --wait --timeout 2h send EDITOR_TWO /path/to/project --exclude .git,node_modules
 ```
 
 Inspect transfers:
@@ -191,16 +185,16 @@ verlay --json transfers list
 verlay --json transfers show TRANSFER_ID
 ```
 
-Approve a manually reviewed incoming transfer:
+If that device was returned to manual approval, approve an incoming transfer:
 
 ```sh
 verlay --json transfers approve TRANSFER_ID --out "$HOME/Downloads/Verlay"
 ```
 
-## Authorize automatic delivery
+## Receive policy
 
-After pairing, a receiving user can grant one device a bounded automatic-receive
-policy:
+Pairing grants a 100 GiB-per-transfer trusted inbox by default. Change that
+limit when needed:
 
 ```sh
 verlay --json devices authorize EDITOR_TWO --max-bytes 10737418240 --folders
@@ -239,8 +233,8 @@ Give this Windows-specific instruction to a terminal-capable coding agent:
 Install Verlay on this Windows computer from https://github.com/project-robin/Verlay.
 Clone the repository, inspect scripts/bootstrap-agent.ps1, run it, verify Verlay
 status and doctor, and tell me when it is ready. Do not edit go.mod or downgrade
-dependencies. Stop before pairing, enabling
-automatic receiving, or changing the relay so I can authorize those decisions.
+dependencies. Stop before pairing or changing the relay so I can authorize
+those decisions.
 ```
 
 From a cloned checkout, the native bootstrap is:
@@ -250,8 +244,9 @@ From a cloned checkout, the native bootstrap is:
 ```
 
 It builds and installs `verlay.exe` and `verlayd.exe`, adds Verlay to the user
-`PATH`, registers the Agent Skill, starts the daemon for the current Windows
-session, and runs health checks. It requires Go 1.21 or newer while the beta has
+`PATH`, registers the Agent Skill, registers a user-level Task Scheduler job
+that keeps the daemon running and starts it at login, and runs health checks. It
+requires Go 1.21 or newer while the beta has
 no published binary release; Go automatically selects the newer toolchain
 declared by the repository. The script never edits `go.mod`.
 
@@ -263,9 +258,8 @@ Copy-Item .\verlay-windows-amd64.exe .\verlayd.exe
 .\verlayd.exe
 ```
 
-Windows login persistence and physical Linux-to-Windows verification remain
-outstanding. See [docs/VERLAY_BETA.md](docs/VERLAY_BETA.md) for the complete
-friend-test workflow.
+Physical Linux-to-Windows verification remains outstanding. See
+[docs/VERLAY_BETA.md](docs/VERLAY_BETA.md) for the complete friend-test workflow.
 
 ## Agent interface
 

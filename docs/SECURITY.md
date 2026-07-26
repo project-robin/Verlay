@@ -7,15 +7,15 @@ four-word PAKE code and the other enters it. The API also reports the peer's
 Ed25519 fingerprint for identity inspection. Subsequent
 control connections use TLS 1.3 and pin the approved public keys.
 
-Pairing grants only the `files.request` capability. It does not grant remote
-command execution. Incoming files and folders require a local decision unless a
-human has configured a per-device auto-receive policy with a maximum byte count
-and, separately, folder permission.
+Pairing grants `files.request` plus a dedicated auto-receive inbox capped at
+100 GiB per file or folder. It does not grant remote command execution or
+access outside that inbox. The user can change the cap or return the device to
+manual approval.
 
 The following operations are human security boundaries:
 
 - creating or entering a pairing code;
-- enabling or removing automatic receive authorization;
+- changing automatic receive authorization;
 - changing relay infrastructure or credentials;
 - revoking a trusted device.
 

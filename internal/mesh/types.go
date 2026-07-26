@@ -3,9 +3,10 @@ package mesh
 import "time"
 
 const (
-	APIVersion      = "v1"
-	ProtocolVersion = 1
-	DefaultRelay    = "croc.schollz.com:9009"
+	APIVersion                  = "v1"
+	ProtocolVersion             = 1
+	DefaultRelay                = "croc.schollz.com:9009"
+	DefaultTrustedTransferLimit = int64(100 << 30)
 )
 
 // Envelope is the stable machine-readable result produced by the CLI and API.
