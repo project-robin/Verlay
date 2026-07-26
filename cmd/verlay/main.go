@@ -150,10 +150,7 @@ func runDaemon(args []string, opts options, paths meshcore.Paths) int {
 		return printFailure(opts.json, &meshcore.APIError{Code: "invalid_usage", Message: "usage: verlay daemon start|stop|restart (run verlayd directly for foreground mode)", Retryable: false}, 2)
 	}
 	if runtime.GOOS == "windows" {
-		return printFailure(opts.json, &meshcore.APIError{
-			Code:    "service_control_unavailable",
-			Message: "Windows beta has no background service yet; keep `verlayd.exe` open in one terminal",
-		}, 3)
+		return runWindowsDaemon(args[0], opts)
 	}
 	command := exec.Command("systemctl", "--user", args[0], "verlayd.service")
 	output, err := command.CombinedOutput()
@@ -165,6 +162,31 @@ func runDaemon(args []string, opts options, paths meshcore.Paths) int {
 		return printFailure(opts.json, &meshcore.APIError{Code: "service_control_failed", Message: message, Retryable: true}, 3)
 	}
 	return printSuccess(opts.json, map[string]any{"action": args[0], "service": "verlayd.service"})
+}
+
+func runWindowsDaemon(action string, opts options) int {
+	runTask := func(argument string) error {
+		output, err := exec.Command("schtasks.exe", argument, "/TN", "Verlay").CombinedOutput()
+		if err == nil {
+			return nil
+		}
+		message := strings.TrimSpace(string(output))
+		if message == "" {
+			message = err.Error()
+		}
+		return errors.New(message)
+	}
+	if action == "stop" || action == "restart" {
+		if err := runTask("/End"); err != nil && action == "stop" {
+			return printFailure(opts.json, &meshcore.APIError{Code: "service_control_failed", Message: err.Error(), Retryable: true}, 3)
+		}
+	}
+	if action == "start" || action == "restart" {
+		if err := runTask("/Run"); err != nil {
+			return printFailure(opts.json, &meshcore.APIError{Code: "service_control_failed", Message: err.Error() + "; rerun the Windows bootstrap to install the Verlay task", Retryable: true}, 3)
+		}
+	}
+	return printSuccess(opts.json, map[string]any{"action": action, "service": "Verlay"})
 }
 
 func runSend(args []string, opts options, paths meshcore.Paths) int {
@@ -490,7 +512,7 @@ Commands:
   relay show                     Show the relay address without its password
   relay set HOST:PORT --password-stdin
                                  Configure a self-hosted relay, then restart
-  daemon start|stop|restart      Control the Linux user service
+  daemon start|stop|restart      Control the background daemon
   pair create                    Create a ten-minute pairing code
   pair accept CODE               Connect using a pairing code
   pair list                      List current pairing requests

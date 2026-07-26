@@ -35,6 +35,7 @@ if ([int]$Matches[1] -lt 1 -or ([int]$Matches[1] -eq 1 -and [int]$Matches[2] -lt
 $BinDir = Join-Path $InstallRoot "bin"
 $Verlay = Join-Path $BinDir "verlay.exe"
 $Verlayd = Join-Path $BinDir "verlayd.exe"
+$TaskName = "Verlay"
 $CanonicalSkill = Join-Path $SkillHome "verlay"
 $BuildDir = Join-Path ([System.IO.Path]::GetTempPath()) ("verlay-build-" + [guid]::NewGuid())
 $BuiltBinary = Join-Path $BuildDir "verlay.exe"
@@ -51,6 +52,7 @@ try {
         Pop-Location
     }
 
+    Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
     Get-Process verlayd -ErrorAction SilentlyContinue |
         Where-Object { $_.Path -eq $Verlayd } |
         Stop-Process -Force
@@ -80,7 +82,27 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 if (-not $NoStart) {
-    Start-Process -WindowStyle Hidden -FilePath $Verlayd | Out-Null
+    $Identity = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+    $Action = New-ScheduledTaskAction -Execute $Verlayd
+    $Trigger = New-ScheduledTaskTrigger -AtLogOn -User $Identity
+    $Principal = New-ScheduledTaskPrincipal -UserId $Identity -LogonType Interactive -RunLevel Limited
+    $Settings = New-ScheduledTaskSettingsSet `
+        -AllowStartIfOnBatteries `
+        -DontStopIfGoingOnBatteries `
+        -StartWhenAvailable `
+        -RestartCount 3 `
+        -RestartInterval (New-TimeSpan -Minutes 1) `
+        -ExecutionTimeLimit ([TimeSpan]::Zero) `
+        -MultipleInstances IgnoreNew
+    Register-ScheduledTask `
+        -TaskName $TaskName `
+        -Action $Action `
+        -Trigger $Trigger `
+        -Principal $Principal `
+        -Settings $Settings `
+        -Description "Verlay secure device daemon" `
+        -Force | Out-Null
+    Start-ScheduledTask -TaskName $TaskName
     $Ready = $false
     for ($Attempt = 0; $Attempt -lt 50; $Attempt++) {
         Start-Sleep -Milliseconds 100
@@ -101,5 +123,8 @@ Write-Host ""
 Write-Host "Verlay bootstrap complete."
 Write-Host "CLI: $Verlay"
 Write-Host "Daemon: $Verlayd"
+if (-not $NoStart) {
+    Write-Host "Background task: $TaskName (starts at login)"
+}
 Write-Host "Agent Skill: $CanonicalSkill"
 Write-Host "Security: no device was paired or authorized."

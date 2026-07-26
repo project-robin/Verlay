@@ -55,6 +55,13 @@ func TestPairingCreatesMatchingPersistentTrust(t *testing.T) {
 	if len(trustedA.Capabilities) != 1 || trustedA.Capabilities[0] != "files.request" {
 		t.Fatalf("unexpected default capabilities: %v", trustedA.Capabilities)
 	}
+	for _, trusted := range []Device{trustedA, trustedB} {
+		if trusted.ReceivePolicy == nil || !trusted.ReceivePolicy.AutoReceive ||
+			!trusted.ReceivePolicy.AllowFolders ||
+			trusted.ReceivePolicy.MaxBytes != DefaultTrustedTransferLimit {
+			t.Fatalf("pairing did not authorize the trusted inbox: %#v", trusted.ReceivePolicy)
+		}
+	}
 }
 
 func TestPairingRequiresFourWordCode(t *testing.T) {

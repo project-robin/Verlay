@@ -32,13 +32,14 @@ Pairing codes expire after ten minutes and are not long-term credentials.
 Friendly names are local labels; the stable device ID is the unambiguous
 automation identifier. Revocation is also local: run it on both devices when
 the human wants the relationship removed from both device lists.
+The daemon must remain running until pairing finishes; do not create a second
+code or restart the daemon while the first request is active.
 
 ## Transfer lifecycle
 
 ```sh
-verlay --json send DEVICE_ID /absolute/path
-verlay --json send DEVICE_ID /absolute/folder --exclude .git,node_modules
 verlay --json --wait --timeout 2h send DEVICE_ID /absolute/path
+verlay --json --wait --timeout 2h send DEVICE_ID /absolute/folder --exclude .git,node_modules
 verlay --json transfers approve TRANSFER_ID --out /approved/directory
 verlay --json transfers reject TRANSFER_ID
 verlay --json transfers cancel TRANSFER_ID
@@ -89,6 +90,10 @@ systemctl --user status verlayd.service
 journalctl --user -u verlayd.service --no-pager -n 100
 verlay --json doctor
 ```
+
+On Windows, inspect the `Verlay` scheduled task and run
+`verlay --json daemon start`. Rerun `scripts/bootstrap-agent.ps1` if the task is
+missing. Do not repeatedly restart the daemon during pairing or transfer.
 
 If a transfer is queued:
 

@@ -61,7 +61,14 @@ jobs:
         run: |
           $installRoot = Join-Path $env:RUNNER_TEMP "Verlay"
           $skillHome = Join-Path $env:RUNNER_TEMP "skills"
-          ./scripts/bootstrap-agent.ps1 -InstallRoot $installRoot -SkillHome $skillHome -NoStart
-          & "$installRoot/bin/verlay.exe" --json schema
-          if (-not (Test-Path "$installRoot/bin/verlayd.exe")) { throw "verlayd.exe was not installed" }
-          if (-not (Test-Path "$skillHome/verlay/SKILL.md")) { throw "Verlay Agent Skill was not installed" }
+          try {
+            ./scripts/bootstrap-agent.ps1 -InstallRoot $installRoot -SkillHome $skillHome
+            & "$installRoot/bin/verlay.exe" --json schema
+            & "$installRoot/bin/verlay.exe" --json status
+            if (-not (Get-ScheduledTask -TaskName Verlay -ErrorAction SilentlyContinue)) { throw "Verlay task was not installed" }
+            if (-not (Test-Path "$installRoot/bin/verlayd.exe")) { throw "verlayd.exe was not installed" }
+            if (-not (Test-Path "$skillHome/verlay/SKILL.md")) { throw "Verlay Agent Skill was not installed" }
+          } finally {
+            Stop-ScheduledTask -TaskName Verlay -ErrorAction SilentlyContinue
+            Unregister-ScheduledTask -TaskName Verlay -Confirm:$false -ErrorAction SilentlyContinue
+          }

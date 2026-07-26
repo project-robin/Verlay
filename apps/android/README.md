@@ -36,7 +36,7 @@ From the app you can:
 
 - create or enter a four-word pairing code;
 - send a selected document to a paired Linux device;
-- approve or reject incoming paired-device transfers.
+- automatically receive into a paired device's bounded inbox.
 
 Incoming mesh files are first received in app-private storage and then
 published to `Downloads/Verlay` through MediaStore. The persistent identity seed

@@ -267,6 +267,11 @@ internal fun MeshAlphaSection(
             if (snapshot.availability == MeshAvailability.AVAILABLE) {
                 HorizontalDivider(Modifier.padding(vertical = 18.dp))
                 Text("Pair once", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Pairing trusts this device to deliver files and folders automatically.",
+                    modifier = Modifier.padding(top = 4.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 Button(onClick = onCreatePairing, modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) {
                     Text("Create pairing code")
                 }

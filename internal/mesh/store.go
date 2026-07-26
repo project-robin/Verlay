@@ -199,7 +199,7 @@ func (s *Store) RequireReceiveApproval(id string) (Device, error) {
 	if !ok {
 		return Device{}, &APIError{Code: "device_not_found", Message: "trusted device was not found", Retryable: false}
 	}
-	device.ReceivePolicy = nil
+	device.ReceivePolicy = &ReceivePolicy{AutoReceive: false}
 	s.devices[id] = device
 	if err := s.writeDevicesLocked(); err != nil {
 		return Device{}, err
@@ -207,6 +207,15 @@ func (s *Store) RequireReceiveApproval(id string) (Device, error) {
 	visible := device
 	visible.RelationshipKey = ""
 	return visible, nil
+}
+
+func (s *Store) defaultReceivePolicy(device Device) *ReceivePolicy {
+	return &ReceivePolicy{
+		AutoReceive:  true,
+		Inbox:        filepath.Join(s.config.ReceiveDir, receiveInboxName(device)),
+		MaxBytes:     DefaultTrustedTransferLimit,
+		AllowFolders: true,
+	}
 }
 
 func receiveInboxName(device Device) string {
@@ -401,11 +410,19 @@ func (s *Store) loadDevices() error {
 	if err != nil {
 		return fmt.Errorf("read devices: %w", err)
 	}
+	migrated := false
 	for _, device := range devices {
 		if device.DeviceID == "" || device.RelationshipKey == "" {
 			return errors.New("devices file contains an incomplete trust record")
 		}
+		if device.ReceivePolicy == nil {
+			device.ReceivePolicy = s.defaultReceivePolicy(device)
+			migrated = true
+		}
 		s.devices[device.DeviceID] = device
+	}
+	if migrated {
+		return s.writeDevicesLocked()
 	}
 	return os.Chmod(s.paths.DevicesFile, 0o600)
 }
