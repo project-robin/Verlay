@@ -1,8 +1,9 @@
-# Croc Transfer desktop prototype
+# Verlay desktop compatibility prototype
 
-This is a deliberately small Tauri 2 interface around the existing Go `croc`
-implementation. The UI is plain HTML, CSS, and JavaScript; the protocol remains
-in the bundled Go sidecar.
+This is a small Tauri 2 interface for Verlay's legacy Croc-compatible
+code-transfer path. It predates the persistent paired-device mesh and is not yet
+the primary Verlay desktop client. The UI is plain HTML, CSS, and JavaScript;
+the transfer protocol remains in the bundled Go sidecar.
 
 ## Low-memory build
 
