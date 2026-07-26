@@ -1,8 +1,8 @@
-# Croc Android prototype
+# Verlay Android beta
 
-This is a deliberately small Android client for testing one-file transfers against the `croc`
-CLI. It builds the Go source from the repository root and packages that exact build into an
-ARM64 APK.
+This app provides the paired-device Verlay experience on Android and retains a
+legacy Croc code-transfer mode for compatibility testing. It builds the Go
+source from the repository root and packages the mesh runtime into an ARM64 APK.
 
 ## Requirements
 
@@ -36,7 +36,7 @@ Both devices need outbound internet access to the default public croc relay. The
 supports one regular file per transfer; folders and multi-file batches are intentionally out of
 scope.
 
-## Paired-device mesh alpha
+## Verlay paired-device mode
 
 The APK now also packages `libmesh.so`, the same Go daemon/CLI used on Linux.
 Tap **Make phone available** to run it inside a visible Android foreground

@@ -2,364 +2,277 @@
 
 **A trusted path between machines.**
 
-Verlay is a daemon-centered, CLI-first platform for persistent device trust,
-permission-bounded autonomous file and folder delivery, and resumable encrypted
-transfers. Its JSON interface is designed for both people and AI agents. The
-current production beta targets Linux, Android, and a minimal Windows CLI.
+Verlay is a secure, permission-based device mesh for people and AI agents. Pair
+devices once, keep their identities, and move files or folders between them
+through a CLI designed for both interactive use and automation.
 
-Verlay is built on [croc](https://github.com/schollz/croc) and preserves the
-compatible `croc` command while developing the persistent `mesh` daemon and CLI.
-See [the beta guide](docs/MESH_ALPHA.md), [security model](docs/SECURITY.md),
-and [attribution notice](NOTICE).
+> **Beta:** Linux and Android are the currently tested platforms. A minimal
+> Windows CLI is available for testing. macOS, iOS, and production relay
+> infrastructure are future work.
 
-## Croc foundation
+## Why Verlay
 
-`croc` is a tool that allows any two computers to simply and securely transfer files and folders. AFAIK, *croc* is the only CLI file-transfer tool that does **all** of the following:
+Normal file-sharing workflows make people upload work to cloud storage, send a
+link, wait for someone else to download it, and repeat. Verlay creates a trusted
+relationship between devices so an approved person or agent can deliver work
+directly to the intended machine.
 
-- Allows **any two computers** to transfer data (using a relay)
-- Provides **end-to-end encryption** (using PAKE)
-- Enables easy **cross-platform** transfers (Windows, Linux, Mac)
-- Allows **multiple file** transfers
-- Allows **resuming transfers** that are interrupted
-- No need for local server or port-forwarding
-- **IPv6-first** with IPv4 fallback
-- Can **use a proxy**, like Tor
+The current beta provides:
 
-For more information about `croc`, see [my blog post](https://schollz.com/tinker/croc6/) or read a [recent interview I did](https://console.substack.com/p/console-91).
+- persistent device identities and memorable device names;
+- manual, four-word pairing with bilateral fingerprint approval;
+- files and native folder-tree transfers;
+- explicit receive permissions with per-device size limits;
+- a durable queue with retry and interrupted-transfer recovery;
+- two concurrent transfers globally and one active transfer per peer;
+- stable JSON responses, documented exit codes, schemas, and an embedded agent
+  skill;
+- a Linux user daemon and no-sudo installer;
+- an Android foreground peer with Keystore-backed identity;
+- encrypted live relay transport without cloud file storage.
 
-![Example](src/install/customization.gif)
+## Platform status
 
-## Install
+| Platform | Current status |
+| --- | --- |
+| Linux | CLI and background daemon; physically tested with Android |
+| Android | Functional beta app; bidirectional single-file transfer tested |
+| Windows | CLI build available; background service and physical verification pending |
+| Linux desktop UI | Legacy transfer prototype; paired-device integration pending |
+| macOS and iOS | Planned, not currently supported |
 
-You can download [the latest release for your system](https://github.com/schollz/croc/releases/latest), or install a release from the command-line:
+Folder transfer, recovery after interruption, concurrent multi-peer transfers,
+notification delivery, and reboot persistence still need complete physical
+verification before a production claim.
 
-```bash
-curl https://getcroc.schollz.com | bash
+## Install the Linux beta
+
+Requirements:
+
+- Linux with systemd user services;
+- Go 1.25 or newer;
+- Git.
+
+Build and install from this repository:
+
+```sh
+git clone https://github.com/project-robin/Verlay.git
+cd Verlay
+./scripts/install-mesh-linux.sh
 ```
 
-### On macOS
+The installer builds the Verlay CLI, installs it as `~/.local/bin/mesh`, and
+starts `mesh.service` for the current user. It does not require `sudo`.
 
-Using [Homebrew](https://brew.sh/):
+Verify the installation:
 
-```bash
-brew install croc
+```sh
+mesh status
+mesh doctor
 ```
 
-Using [MacPorts](https://www.macports.org/):
+Uninstall the binary and service while preserving device identity and pairing
+data:
 
-```bash
-sudo port selfupdate
-sudo port install croc
+```sh
+./scripts/install-mesh-linux.sh --uninstall
 ```
 
-### On Windows
+The command is still named `mesh` during the beta. A later release may expose a
+`verlay` command while retaining `mesh` as a compatibility alias.
 
-You can install the latest release with [Scoop](https://scoop.sh/), [Chocolatey](https://chocolatey.org/), or [Winget](https://learn.microsoft.com/windows/package-manager/):
+## Pair two computers
 
-```bash
-scoop install croc
+Create a short-lived pairing code on the first device:
+
+```sh
+mesh --json pair create
 ```
 
-```bash
-choco install croc
+Enter that code on the second device:
+
+```sh
+mesh --json pair accept WORD-WORD-WORD-WORD
 ```
 
-```bash
-winget install schollz.croc
+Inspect the pending relationship on both devices, compare the fingerprints,
+and approve the corresponding pairing ID on each:
+
+```sh
+mesh --json pair list
+mesh --json pair approve PAIRING_ID
+mesh --json devices list
 ```
 
-### Using nix-env
+Pairing and fingerprint approval are intentional human security boundaries.
+Agents should not cross them autonomously.
 
-You can install the latest release with [Nix](https://nixos.org/):
+## Send files and folders
 
-```bash
-nix-env -i croc
+Send a file:
+
+```sh
+mesh --json send EDITOR_TWO /path/to/video.mp4
 ```
 
-### On NixOS
+Send a folder while excluding generated content:
 
-You can add this to your [configuration.nix](https://nixos.org/manual/nixos/stable/#ch-configuration):
-
-```nix
-environment.systemPackages = [
-  pkgs.croc
-];
+```sh
+mesh --json send EDITOR_TWO /path/to/project --exclude .git,node_modules
 ```
 
-### On Alpine Linux
+Wait for a terminal result in an agent workflow:
 
-First, install dependencies:
-
-```bash
-apk add bash coreutils
-wget -qO- https://getcroc.schollz.com | bash
+```sh
+mesh --json send EDITOR_TWO /path/to/result.zip --wait --timeout 2h
 ```
 
-### On Arch Linux
+Inspect transfers:
 
-Install with `pacman`:
-
-```bash
-pacman -S croc
+```sh
+mesh --json transfers list
+mesh --json transfers show TRANSFER_ID
 ```
 
-### On Fedora
+Approve a manually reviewed incoming transfer:
 
-Install with `dnf`:
-
-```bash
-dnf install croc
+```sh
+mesh --json transfers approve TRANSFER_ID --out "$HOME/Downloads/Mesh"
 ```
 
-### On Gentoo
+## Authorize automatic delivery
 
-Install with `portage`:
+After pairing, a receiving user can grant one device a bounded automatic-receive
+policy:
 
-```bash
-emerge net-misc/croc
+```sh
+mesh --json devices authorize EDITOR_TWO --max-bytes 10737418240 --folders
 ```
 
-### On Termux
+Return that device to manual approval without removing the pairing:
 
-Install with `pkg`:
-
-```bash
-pkg install croc
+```sh
+mesh --json devices require-approval EDITOR_TWO
 ```
 
-### On FreeBSD
+Revoke the relationship completely:
 
-Install with `pkg`:
-
-```bash
-pkg install croc
+```sh
+mesh --json devices revoke EDITOR_TWO
 ```
 
-### On Linux, macOS, and Windows via Conda
+## Android beta
 
-You can install from [conda-forge](https://github.com/conda-forge/croc-feedstock) globally with [`pixi`](https://pixi.sh/):
+The Android app embeds the same Go mesh runtime used by Linux. It can:
 
-```bash
-pixi global install croc
+- create, accept, and approve pairings;
+- remain available through a visible foreground service;
+- send a selected document to a paired computer;
+- approve or reject incoming transfers;
+- publish received files to `Downloads/Mesh`.
+
+Build instructions and requirements are in
+[apps/android/README.md](apps/android/README.md).
+
+## Windows beta
+
+GitHub releases can produce `mesh-windows-amd64.exe`. The current Windows beta
+runs the daemon in an open PowerShell window:
+
+```powershell
+.\mesh-windows-amd64.exe daemon run
 ```
 
-Or install into a particular environment with [`conda`](https://docs.conda.io/projects/conda/):
+Use a second PowerShell window for pairing and transfers. Windows service
+packaging and physical Linux-to-Windows verification remain outstanding. See
+[docs/MESH_ALPHA.md](docs/MESH_ALPHA.md) for the complete friend-test workflow.
 
-```bash
-conda install --channel conda-forge croc
+## Agent interface
+
+Verlay is CLI-first so an AI agent can use it without operating a desktop UI.
+Automation features include:
+
+```sh
+mesh --json status
+mesh --json devices list
+mesh --json transfers list
+mesh --json schema
+mesh skill print
 ```
 
-### On Linux, macOS via Docker 
+Commands return stable JSON envelopes and meaningful process exit codes. The
+embedded skill documents which actions require human authorization.
 
-Add the following one-liner function to your ~/.profile (works with any POSIX-compliant shell):
+## Architecture
 
-```bash
-croc() { [ $# -eq 0 ] && set -- ""; mkdir -p "$HOME/.config/croc"; docker run --rm -it --user "$(id -u):$(id -g)" -v "$(pwd):/c" -v "$HOME/.config/croc:/.config/croc" -w /c -e CROC_SECRET docker.io/schollz/croc "$@"; }
+```text
+Person or AI agent
+        |
+     mesh CLI
+        |
+  local Verlay daemon
+        |
+authenticated control channel
+        |
+ encrypted live relay transport
+        |
+ remote Verlay daemon or Android peer
 ```
 
-You can also just paste it in the terminal for current session. On first run Docker will pull the image. `croc` via Docker will only work within the current directory and its subdirectories.
+- The daemon owns identity, trust relationships, permissions, queues, and
+  transfer state.
+- Pairing uses a short-lived PAKE code and persistent Ed25519 identities.
+- Later control sessions use TLS 1.3 and pin the paired device identity.
+- Each transfer receives a distinct secret derived from the trusted
+  relationship and transfer ID.
+- The relay forwards encrypted live traffic. It does not store files or possess
+  the keys required to read their contents.
 
-### Build from Source
+Both devices currently need to be online at the same time. The beta defaults to
+the public Croc relay, which is suitable for development and compatibility
+testing but is not infrastructure controlled by the Verlay project. The relay
+is configurable, and production deployment requires independently operated,
+monitored relay endpoints.
 
-If you prefer, you can [install Go](https://go.dev/dl/) and build from source (requires Go 1.22+):
+## Repository layout
 
-```bash
-go install github.com/schollz/croc/v10@latest
+```text
+cmd/mesh/          Verlay CLI
+internal/mesh/     daemon, identity, pairing, permissions, queue, and transfers
+apps/android/      Android beta
+apps/desktop/      Tauri desktop prototype
+packaging/linux/   systemd user service
+scripts/           installation tooling
+docs/              security model and beta operations
+src/               Croc-derived encrypted transfer foundation
 ```
 
-### On Android
-
-There are two F-Droid apps available:
-
-- [crocgui](https://f-droid.org/packages/com.github.howeyc.crocgui/) — original port (Go, basic UI)
-- [croc-app](https://f-droid.org/en/packages/com.dking.crocapp/) — native Kotlin/Jetpack Compose client with a modern, mobile-first interface
-
-## Usage
-
-To send a file, simply do:
-
-```bash
-$ croc send [file(s)-or-folder]
-Sending 'file-or-folder' (X MB)
-Code is: code-phrase
-```
-
-Then, to receive the file (or folder) on another computer, run:
-
-```bash
-croc code-phrase
-```
-
-The code phrase is used to establish password-authenticated key agreement ([PAKE](https://en.wikipedia.org/wiki/Password-authenticated_key_agreement)) which generates a secret key for the sender and recipient to use for end-to-end encryption.
-
-### Customizations & Options
-
-#### Using `croc` on Linux or macOS
-
-On Linux and macOS, the sending and receiving process is slightly different to avoid [leaking the secret via the process name](https://nvd.nist.gov/vuln/detail/CVE-2023-43621). You will need to run `croc` with the secret as an environment variable. For example, to receive with the secret `***`:
-
-```bash
-CROC_SECRET=*** croc
-```
-
-For single-user systems, the default behavior can be permanently enabled by running:
-
-```bash
-croc --classic
-```
-
-#### Custom Code Phrase
-
-You can send with your own code phrase (must be at least 6 characters):
-
-```bash
-croc send --code [code-phrase] [file(s)-or-folder]
-```
-
-#### Allow Overwriting Without Prompt
-
-To automatically overwrite files without prompting, use the `--overwrite` flag:
-
-```bash
-croc --yes --overwrite <code>
-```
-
-#### Excluding Folders
-
-To exclude folders from being sent, use the `--exclude` flag with comma-delimited exclusions:
-
-```bash
-croc send --exclude "node_modules,.venv" [folder]
-```
-
-#### Use Pipes - stdin and stdout
-
-You can pipe to `croc`:
-
-```bash
-cat [filename] | croc send
-```
-
-To receive the file to `stdout`, you can use:
-
-```bash
-croc --yes [code-phrase] > out
-```
-
-#### Send Text
-
-To send URLs or short text, use:
-
-```bash
-croc send --text "hello world"
-```
-
-#### Send Multiple Files
-
-You can send multiple files directly by listing the files and/or folders:
-
-```bash
-croc send [file1] [file2] [file3] [folder1] [folder2]
-```
-
-#### Show QR Code
-
-To show QR code (for mobile devices), use:
-
-```bash
-croc send --qr [file(s)-or-folder]
-```
-
-#### Use a Proxy
-
-You can send files via a proxy by adding `--socks5`:
-
-```bash
-croc --socks5 "127.0.0.1:9050" send SOMEFILE
-```
-
-#### Change Encryption Curve
-
-To choose a different elliptic curve for encryption, use the `--curve` flag:
-
-```bash
-croc --curve p521 <codephrase>
-```
-
-#### Change Hash Algorithm
-
-For faster hashing, use the `imohash` algorithm:
-
-```bash
-croc send --hash imohash SOMEFILE
-```
-
-#### Clipboard Options
-
-By default, the code phrase is copied to your clipboard. To disable this:
-
-```bash
-croc --disable-clipboard send [filename]
-```
-
-To copy the full command with the secret as an environment variable (useful on Linux/macOS):
-
-```bash
-croc --extended-clipboard send [filename]
-```
-
-This copies the full command like `CROC_SECRET="code-phrase" croc` (including any relay/pass flags).
-
-#### Quiet Mode
-
-To suppress all output (useful for scripts and automation):
-
-```bash
-croc --quiet send [filename]
-```
-
-#### Self-host Relay
-
-You can run your own relay:
-
-```bash
-croc relay
-```
-
-By default, it uses TCP ports 9009-9013. You can customize the ports (e.g., `croc relay --ports 1111,1112`), but at least **2** ports are required.
-
-To send files using your relay:
-
-```bash
-croc --relay "myrelay.example.com:9009" send [filename]
-```
-
-#### Self-host Relay with Docker
-
-You can also run a relay with Docker:
-
-```bash
-docker run -d -p 9009-9013:9009-9013 -e CROC_PASS='YOURPASSWORD' docker.io/schollz/croc
-```
-
-To send files using your custom relay:
-
-```bash
-croc --pass YOURPASSWORD --relay "myreal.example.com:9009" send [filename]
-```
-
-To use custom ports, set `CROC_PORTS` (comma-separated) or `CROC_PORT` (base port):
-
-```bash
-docker run -d -p 9010-9011:9010-9011 -e CROC_PORTS='9010,9011' -e CROC_PASS='YOURPASSWORD' docker.io/schollz/croc
-```
-
-## Acknowledgements
-
-`croc` has evolved through many iterations, and I am thankful for the contributions! Special thanks to:
-
-- [@warner](https://github.com/warner) for the [idea](https://github.com/magic-wormhole/magic-wormhole)
-- [@tscholl2](https://github.com/tscholl2) for the [encryption gists](https://gist.github.com/tscholl2/dc7dc15dc132ea70a98e8542fefffa28)
-- [@skorokithakis](https://github.com/skorokithakis) for [proxying two connections](https://www.stavros.io/posts/proxying-two-connections-go/)
-
-And many more!
+## Documentation
+
+- [Beta operations and limitations](docs/MESH_ALPHA.md)
+- [Security model](docs/SECURITY.md)
+- [Android build and testing](apps/android/README.md)
+- [Desktop prototype](apps/desktop/README.md)
+- [LocalSend comparison methodology](benchmarks/localsend-vs-croc/README.md)
+
+## Built on Croc
+
+Verlay originated from [Croc](https://github.com/schollz/croc), created by Zack
+Scholl and its contributors. Croc provides the encrypted relay-based transfer
+foundation and remains available in this repository as a compatibility layer.
+
+Verlay adds persistent device identity, trusted pairing, permissions, a daemon,
+durable queues, an agent-oriented JSON interface, Android mesh integration,
+desktop prototypes, and product-specific packaging. Verlay is an independent
+project and is not affiliated with or endorsed by the original Croc project.
+
+The original copyright notices are preserved. Both the original work and
+Verlay modifications are distributed under the MIT License. See
+[LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+## Contributing
+
+Verlay is currently a production-oriented beta. Bug reports should include the
+platforms involved, `mesh doctor` output with secrets removed, the transfer
+direction, and whether the failure occurred during pairing, connection, or
+transfer.
