@@ -54,8 +54,30 @@ func TestAgentSkillAndSchemaExposeAutomationContract(t *testing.T) {
 		}
 	}
 	skill := meshcore.AgentSkill()
-	if !strings.Contains(skill, "Never run them") || !strings.Contains(skill, "mesh --json") {
+	if !strings.Contains(skill, "Never run them") || !strings.Contains(skill, "verlay --json") {
 		t.Fatal("embedded skill omitted automation or approval guidance")
+	}
+}
+
+func TestInvocationArgsUsesVerlaydAsDaemon(t *testing.T) {
+	args := invocationArgs("/usr/bin/verlayd", nil)
+	if strings.Join(args, " ") != "daemon run" {
+		t.Fatalf("verlayd args = %v, want daemon run", args)
+	}
+	args = invocationArgs(`C:\Program Files\Verlay\verlayd.exe`, nil)
+	if strings.Join(args, " ") != "daemon run" {
+		t.Fatalf("verlayd.exe args = %v, want daemon run", args)
+	}
+	args = invocationArgs("verlayd-windows-amd64.exe", nil)
+	if strings.Join(args, " ") != "daemon run" {
+		t.Fatalf("release verlayd args = %v, want daemon run", args)
+	}
+	args = invocationArgs("verlayd-windows-amd64.exe", []string{"internal-transfer", "send"})
+	if strings.Join(args, " ") != "internal-transfer send" {
+		t.Fatalf("verlayd internal args = %v, want internal transfer passthrough", args)
+	}
+	if args := invocationArgs("/usr/bin/verlay", []string{"status"}); strings.Join(args, " ") != "status" {
+		t.Fatalf("verlay args = %v, want status", args)
 	}
 }
 

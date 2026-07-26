@@ -161,7 +161,7 @@ private fun TransferScreen() {
                 .padding(horizontal = 24.dp, vertical = 32.dp),
         ) {
             Text(
-                text = "Verlay",
+                text = "Verlay Mobile",
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
             )
@@ -325,7 +325,7 @@ private fun MeshAlphaSection(
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(18.dp)) {
-            Text("Paired device mesh", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text("Your Verlay devices", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Text(
                 snapshot.message,
                 modifier = Modifier.padding(top = 4.dp),

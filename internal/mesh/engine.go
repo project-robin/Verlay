@@ -218,7 +218,7 @@ func RunInternalTransfer(args []string, secretReader io.Reader) error {
 			return err
 		}
 		if !info.Mode().IsRegular() && !info.IsDir() {
-			return errors.New("mesh sends one regular file or directory at a time")
+			return errors.New("Verlay sends one regular file or directory at a time")
 		}
 		files, emptyFolders, folderCount, err := croc.GetFilesInfoWithExactExclusions([]string{path}, false, false, nil, exclusions)
 		if err != nil {

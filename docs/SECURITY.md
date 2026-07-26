@@ -54,7 +54,7 @@ the protocol assumptions inherited from Croc.
 ## Operational guidance
 
 Use an owned, monitored Croc relay for production trials. Keep its password out
-of arguments and provide it with `mesh relay set ... --password-stdin`. Back up
+of arguments and provide it with `verlay relay set ... --password-stdin`. Back up
 identity and device state as sensitive credentials, keep the daemon running as
-the user systemd service, review `mesh doctor`, and revoke lost or compromised
+the user systemd service, review `verlay doctor`, and revoke lost or compromised
 devices immediately.

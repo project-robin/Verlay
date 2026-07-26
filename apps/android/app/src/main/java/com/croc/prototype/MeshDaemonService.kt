@@ -46,7 +46,7 @@ class MeshDaemonService : Service() {
         ServiceCompat.startForeground(
             this,
             NOTIFICATION_ID,
-            notification("Starting secure device mesh…"),
+            notification("Starting Verlay…"),
             android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
         )
         startDaemon()
@@ -63,7 +63,7 @@ class MeshDaemonService : Service() {
 
     private fun startDaemon() {
         if (daemon?.isAlive == true || starter?.isActive == true) return
-        MeshStore.update(MeshSnapshot(availability = MeshAvailability.STARTING, message = "Starting mesh daemon…"))
+        MeshStore.update(MeshSnapshot(availability = MeshAvailability.STARTING, message = "Starting Verlay…"))
         starter = scope.launch {
             val binary = MeshRuntime.binary(this@MeshDaemonService)
             if (!binary.isFile) {
@@ -80,7 +80,7 @@ class MeshDaemonService : Service() {
                     }
                     .start()
             } catch (error: Exception) {
-                Log.e(TAG, "Mesh daemon startup failed", error)
+                Log.e(TAG, "Verlay startup failed", error)
                 val detail = error.message?.takeIf { it.isNotBlank() }
                     ?: "${error.javaClass.simpleName} while preparing the mesh engine."
                 MeshStore.update(
@@ -164,7 +164,7 @@ class MeshDaemonService : Service() {
 
     private fun createNotificationChannel() {
         getSystemService(NotificationManager::class.java).createNotificationChannel(
-            NotificationChannel(NOTIFICATION_CHANNEL, "Device mesh", NotificationManager.IMPORTANCE_LOW),
+            NotificationChannel(NOTIFICATION_CHANNEL, "Verlay availability", NotificationManager.IMPORTANCE_LOW),
         )
     }
 
