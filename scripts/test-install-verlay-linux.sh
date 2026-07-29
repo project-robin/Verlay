@@ -72,6 +72,8 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 test_root="$(mktemp -d /tmp/verlay-install-test.XXXXXX)"
 fixture="$test_root/verlay"
 fake_bin="$test_root/fake-bin"
+export GOCACHE="${GOCACHE:-/tmp/verlay-go-build}"
+export GOMODCACHE="${GOMODCACHE:-/tmp/verlay-go-mod}"
 
 cleanup() {
   while IFS= read -r pid_file; do
