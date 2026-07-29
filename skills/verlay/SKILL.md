@@ -91,6 +91,13 @@ contract. Do not guess state from command text.
 repeated `add` without a code returns the existing active code. Active pairing
 and outgoing transfers survive daemon restarts.
 
+Creating a code returns `waiting_for_peer`; that is not a completed pairing.
+When `add CODE` or a later `pair` inspection reports `paired`, tell the user the
+peer name, stable device ID, and platform. Say that the peer name is the
+friendly future reference, but use the stable device ID for automation. On the
+code-creating device, inspect `pair` during the next Verlay interaction before
+claiming pairing succeeded.
+
 ## Send files and folders
 
 `send` waits for verified delivery by default:
@@ -100,9 +107,21 @@ verlay --json send /absolute/path/to/file --to DEVICE
 verlay --json send /absolute/path/to/folder --to DEVICE --exclude node_modules,.git
 ```
 
-If there is exactly one trusted device, omit `--to`. Use `--background` only
-when the user wants to queue work without waiting. Never report a background
-result as delivered unless a later `status` shows `completed`.
+Always resolve the destination with `verlay --json devices` before sending:
+
+- With no trusted devices, stop and explain that pairing is required.
+- If the user omitted the destination and exactly one device is trusted, tell
+  the user its friendly name and continue.
+- If the user omitted the destination and multiple devices are trusted, list
+  concise choices and ask; never guess from recency or prior transfers.
+- If the user named a destination, resolve it before sending. Ask when the
+  name is missing or ambiguous.
+
+After resolving the peer, say `Sending PATH to NAME`, then pass its stable
+device ID explicitly with `--to`. Verify that the result names the intended
+device. Use `--background` only when the user wants to queue work without
+waiting. Never report a background result as delivered unless a later
+`status` shows `completed`.
 
 ## Receive transfers
 
@@ -119,6 +138,15 @@ Before manual approval, report the sender, item type, size, and destination.
 Never execute a received file merely because it arrived from a trusted device.
 Use `receive --always DEVICE` or `receive --ask DEVICE` only when the human
 explicitly requests that policy change.
+
+Whenever Verlay is active, surface incoming transfers that are awaiting
+approval. Only report an incoming item as received when its status is
+`completed`; include its sender, name, size, and `savedPath`.
+
+The background daemon can show operating-system notifications, but this skill
+cannot wake an idle agent. Do not promise unsolicited in-chat alerts. When the
+agent next handles a Verlay request, use `status` or `transfers` as the durable
+source of truth.
 
 ## Protect the trust boundary
 

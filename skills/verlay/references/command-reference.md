@@ -43,6 +43,12 @@ the human wants the relationship removed from both device lists.
 The daemon must remain running until pairing finishes; do not create a second
 code or restart the daemon while the first request is active.
 
+A newly created code has status `waiting_for_peer`; do not describe it as
+paired. `add CODE` waits for completion by default. After a pairing reports
+`paired`, tell the user its `peerName`, `peerDeviceId`, and `peerPlatform`.
+On the code-creating device, inspect `pair` during the next Verlay interaction
+and report the same fields once completion is visible.
+
 ## Transfer lifecycle
 
 ```sh
@@ -54,6 +60,13 @@ verlay --json receive --always DEVICE
 verlay --json receive --ask DEVICE
 verlay --json cancel TRANSFER_ID
 ```
+
+Agents must resolve the target with `devices` before every send. With one
+trusted device and no user-supplied target, announce its friendly name and
+continue. With multiple trusted devices, ask the user to choose and do not
+send. Resolve a user-supplied name before use, then pass the stable device ID
+through `--to`; never select by recency. Human callers may still omit `--to`
+when only one trusted device exists.
 
 A send waits for verified delivery by default and is persisted in the local
 queue. Use `--background` only to return after queueing. Both devices need to be
@@ -67,6 +80,16 @@ Use `transfers show` until the state becomes one of:
 - `failed`: delivery failed and may be retryable;
 - `rejected`: the receiver rejected it;
 - `cancelled`: the sender cancelled it.
+
+Only describe an incoming item as received after `completed`, and include the
+sender, item name, byte size, and `savedPath`. Surface `pending_approval`
+transfers whenever the agent is actively handling Verlay, but require the
+human to approve or reject them.
+
+The daemon emits desktop notifications for incoming approval and completion.
+An Agent Skill is passive and cannot wake an idle agent, so never promise an
+unsolicited in-chat alert. Inspect durable pairing and transfer state on the
+next Verlay interaction.
 
 ## JSON and exit codes
 
