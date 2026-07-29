@@ -76,6 +76,42 @@ func TestPairingRequiresFourWordCode(t *testing.T) {
 	}
 }
 
+func TestCreatePairingIsIdempotentAndResumesAfterRestart(t *testing.T) {
+	store, err := OpenStore(testPaths(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	block := func(ctx context.Context, _, _ string) (pairingMessageConn, error) {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	first := NewPairingManager(store)
+	first.connector = block
+	created, err := first.Create()
+	if err != nil {
+		t.Fatal(err)
+	}
+	repeated, err := first.Create()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if repeated.PairingID != created.PairingID || repeated.Code != created.Code {
+		t.Fatalf("repeated create = %#v, want existing %#v", repeated, created)
+	}
+	first.Close()
+
+	second := NewPairingManager(store)
+	second.connector = block
+	if err := second.Resume(); err != nil {
+		t.Fatal(err)
+	}
+	defer second.Close()
+	pairings := second.List()
+	if len(pairings) != 1 || pairings[0].PairingID != created.PairingID {
+		t.Fatalf("resumed pairings = %#v, want %s", pairings, created.PairingID)
+	}
+}
+
 func waitForPairingStatus(t *testing.T, manager *PairingManager, id, wanted string) PairingView {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)

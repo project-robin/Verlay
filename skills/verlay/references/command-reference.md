@@ -4,6 +4,14 @@ Load this reference when operating or diagnosing an installed Verlay runtime.
 The installed binary remains authoritative; use `verlay --json schema` to inspect
 its exact command and exit-code contract.
 
+## Installation recovery
+
+Installing this skill alone does not install the `verlay` executable. If
+`command -v verlay` or `Get-Command verlay` fails, use the full bootstrap from
+the repository. It installs the per-user CLI, background daemon, PATH entry,
+and global skill together. After installation, verify the command from a
+directory outside the repository before continuing the original operation.
+
 ## Read-only discovery
 
 ```sh
@@ -12,20 +20,20 @@ verlay --json schema
 verlay --json status
 verlay --json doctor
 verlay --json relay show
-verlay --json pair list
-verlay --json devices list
-verlay --json devices show DEVICE_ID
-verlay --json transfers list
-verlay --json transfers show TRANSFER_ID
+verlay --json pair
+verlay --json devices
+verlay --json devices DEVICE
+verlay --json transfers
+verlay --json transfers TRANSFER
 ```
 
 ## Pairing and device names
 
 ```sh
-verlay --json pair create
-verlay --json pair accept FOUR-WORD-CODE
+verlay --json add
+verlay --json add FOUR-WORD-CODE
 verlay --json devices rename DEVICE_ID FRIENDLY_NAME
-verlay --json devices revoke DEVICE_ID
+verlay --json remove DEVICE
 ```
 
 Pairing codes expire after ten minutes and are not long-term credentials.
@@ -38,14 +46,17 @@ code or restart the daemon while the first request is active.
 ## Transfer lifecycle
 
 ```sh
-verlay --json --wait --timeout 2h send DEVICE_ID /absolute/path
-verlay --json --wait --timeout 2h send DEVICE_ID /absolute/folder --exclude .git,node_modules
-verlay --json transfers approve TRANSFER_ID --out /approved/directory
-verlay --json transfers reject TRANSFER_ID
-verlay --json transfers cancel TRANSFER_ID
+verlay --json send /absolute/path --to DEVICE
+verlay --json send /absolute/folder --to DEVICE --exclude .git,node_modules
+verlay --json receive TRANSFER_ID
+verlay --json receive TRANSFER_ID --reject
+verlay --json receive --always DEVICE
+verlay --json receive --ask DEVICE
+verlay --json cancel TRANSFER_ID
 ```
 
-A send is persisted in the local queue. Both devices currently need to be
+A send waits for verified delivery by default and is persisted in the local
+queue. Use `--background` only to return after queueing. Both devices need to be
 online simultaneously for bytes to move. If a peer or network is temporarily
 unavailable, the daemon retries the persisted transfer. A `--wait` timeout
 stops that CLI wait but does not cancel the job.

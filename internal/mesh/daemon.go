@@ -47,7 +47,13 @@ func NewDaemon(store *Store, version string) (*Daemon, error) {
 		return nil, err
 	}
 	transfers.SetControl(control)
-	return &Daemon{store: store, version: version, startedAt: time.Now().UTC(), pairings: NewPairingManager(store), control: control, transfers: transfers}, nil
+	pairings := NewPairingManager(store)
+	if err := pairings.Resume(); err != nil {
+		control.Close()
+		transfers.Close()
+		return nil, err
+	}
+	return &Daemon{store: store, version: version, startedAt: time.Now().UTC(), pairings: pairings, control: control, transfers: transfers}, nil
 }
 
 func (d *Daemon) Run(ctx context.Context) error {
@@ -280,6 +286,9 @@ func (d *Daemon) handleStatus(w http.ResponseWriter, _ *http.Request) {
 		RelayAddress:    config.RelayAddress,
 		PairedDevices:   len(d.store.Devices()),
 		StartedAt:       d.startedAt,
+		Pairings:        d.pairings.List(),
+		Devices:         d.store.Devices(),
+		Transfers:       d.transfers.List(),
 	}})
 }
 
@@ -315,9 +324,9 @@ func (d *Daemon) handleDevices(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (d *Daemon) handleDevice(w http.ResponseWriter, r *http.Request) {
-	device, ok := d.store.Device(r.PathValue("deviceID"))
-	if !ok {
-		writeAPIError(w, http.StatusNotFound, "device_not_found", "trusted device was not found", false)
+	device, err := d.store.ResolveDevice(r.PathValue("deviceID"))
+	if err != nil {
+		writeError(w, err)
 		return
 	}
 	device.RelationshipKey = ""
@@ -332,7 +341,12 @@ func (d *Daemon) handleRenameDevice(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, "invalid_request", err.Error(), false)
 		return
 	}
-	device, err := d.store.RenameDevice(r.PathValue("deviceID"), request.Name)
+	current, err := d.store.ResolveDevice(r.PathValue("deviceID"))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	device, err := d.store.RenameDevice(current.DeviceID, request.Name)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -374,12 +388,17 @@ func (d *Daemon) handleReceivePolicy(w http.ResponseWriter, r *http.Request) {
 }
 
 func (d *Daemon) handleRevokeDevice(w http.ResponseWriter, r *http.Request) {
-	id := strings.TrimSpace(r.PathValue("deviceID"))
-	if id == "" {
+	query := strings.TrimSpace(r.PathValue("deviceID"))
+	if query == "" {
 		writeAPIError(w, http.StatusBadRequest, "invalid_device", "device ID is required", false)
 		return
 	}
-	revoked, err := d.store.RevokeDevice(id)
+	device, err := d.store.ResolveDevice(query)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	revoked, err := d.store.RevokeDevice(device.DeviceID)
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "state_write_failed", "could not update trusted devices", true)
 		return
@@ -388,8 +407,8 @@ func (d *Daemon) handleRevokeDevice(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusNotFound, "device_not_found", "trusted device was not found", false)
 		return
 	}
-	_ = d.store.Audit(AuditEvent{Action: "device.revoke", Outcome: "success", DeviceID: id})
-	writeEnvelope(w, http.StatusOK, Envelope{OK: true, Data: map[string]any{"deviceId": id, "revoked": true}})
+	_ = d.store.Audit(AuditEvent{Action: "device.revoke", Outcome: "success", DeviceID: device.DeviceID})
+	writeEnvelope(w, http.StatusOK, Envelope{OK: true, Data: map[string]any{"deviceId": device.DeviceID, "name": device.Name, "revoked": true}})
 }
 
 func (d *Daemon) handleDoctor(w http.ResponseWriter, _ *http.Request) {
@@ -398,6 +417,7 @@ func (d *Daemon) handleDoctor(w http.ResponseWriter, _ *http.Request) {
 		checkPathMode("runtime_directory", d.store.Paths().RuntimeDir, 0o700),
 		checkPathMode("identity_file", d.store.Paths().IdentityFile, 0o600),
 		checkPathMode("devices_file", d.store.Paths().DevicesFile, 0o600),
+		checkOptionalPathMode("pairings_file", filepath.Join(d.store.Paths().DataDir, "pairings.json"), 0o600),
 		checkOptionalPathMode("transfers_file", d.store.Paths().TransfersFile, 0o600),
 		checkPathMode("daemon_socket", d.store.Paths().SocketFile, 0o600),
 	}

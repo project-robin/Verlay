@@ -41,6 +41,31 @@ func TestParseSendFolderExclusions(t *testing.T) {
 	}
 }
 
+func TestParseSimpleSend(t *testing.T) {
+	device, path, exclusions, err := parseSendArgs([]string{"/work/result.zip", "--to", "Editor Two", "--exclude", ".git"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if device != "Editor Two" || path != "/work/result.zip" || strings.Join(exclusions, ",") != ".git" {
+		t.Fatalf("unexpected send parse: device=%q path=%q exclusions=%v", device, path, exclusions)
+	}
+	device, path, _, err = parseSendArgs([]string{"/work/result.zip"})
+	if err != nil || device != "" || path != "/work/result.zip" {
+		t.Fatalf("single-device send parse: device=%q path=%q err=%v", device, path, err)
+	}
+}
+
+func TestSendWaitsByDefault(t *testing.T) {
+	_, options, err := parseOptions([]string{"send", "result.zip"})
+	if err != nil || !options.wait {
+		t.Fatalf("default options = %#v, err=%v", options, err)
+	}
+	_, options, err = parseOptions([]string{"send", "result.zip", "--background"})
+	if err != nil || options.wait {
+		t.Fatalf("background options = %#v, err=%v", options, err)
+	}
+}
+
 func TestAgentSkillAndSchemaExposeAutomationContract(t *testing.T) {
 	schema := commandSchema()
 	commands, ok := schema["commands"].([]string)
@@ -48,7 +73,10 @@ func TestAgentSkillAndSchemaExposeAutomationContract(t *testing.T) {
 		t.Fatalf("commands schema has type %T", schema["commands"])
 	}
 	joined := strings.Join(commands, "\n")
-	for _, command := range []string{"send DEVICE PATH", "devices list|show|rename|revoke", "skill print"} {
+	for _, command := range []string{
+		"add [CODE]", "send PATH", "receive [TRANSFER", "remove DEVICE",
+		"devices [DEVICE]", "transfers [TRANSFER]", "doctor", "schema",
+	} {
 		if !strings.Contains(joined, command) {
 			t.Fatalf("schema omitted %q", command)
 		}

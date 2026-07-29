@@ -95,6 +95,60 @@ func TestAuthorizedTransferCrossesAuthenticatedControlChannelWithoutPolling(t *t
 	}
 }
 
+func TestIncomingOfferImmediatelyWaitsForManualDecision(t *testing.T) {
+	storeA, storeB, _, deviceB := pairedTestStores(t)
+	engineA := &fakeEngine{}
+	engineB := &fakeEngine{content: []byte("review me"), fileName: "review.txt"}
+	transfersA := NewTransferManager(storeA, engineA)
+	transfersB := NewTransferManager(storeB, engineB)
+	defer transfersA.Close()
+	defer transfersB.Close()
+	controlA, err := NewControlManager(storeA, transfersA.HandleControl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	controlB, err := NewControlManager(storeB, transfersB.HandleControl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	transfersA.SetControl(controlA)
+	transfersB.SetControl(controlB)
+	defer controlA.Close()
+	defer controlB.Close()
+	clientConnection, serverConnection := net.Pipe()
+	serverReady := make(chan struct{})
+	var serverCalls atomic.Int32
+	controlB.connector = func(ctx context.Context, _, _ string) (net.Conn, error) {
+		if serverCalls.Add(1) == 1 {
+			close(serverReady)
+			return serverConnection, nil
+		}
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	controlA.connector = func(context.Context, string, string) (net.Conn, error) { return clientConnection, nil }
+	controlB.Start()
+	select {
+	case <-serverReady:
+	case <-time.After(2 * time.Second):
+		t.Fatal("receiver control listener did not start")
+	}
+	source := filepath.Join(t.TempDir(), "review.txt")
+	if err := os.WriteFile(source, []byte("review me"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	outgoing, err := transfersA.Send(deviceB.DeviceID, source, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	incoming := waitForIncomingTransfer(t, transfersB)
+	if _, err := transfersB.Decide(incoming.TransferID, true, t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	waitForTransferStatus(t, transfersA, outgoing.TransferID, "completed")
+	waitForTransferStatus(t, transfersB, outgoing.TransferID, "completed")
+}
+
 func TestUnsafeFileOfferIsRejected(t *testing.T) {
 	offer := fileOffer{TransferID: "id", Kind: "file", FileName: "../secret", Size: 1, Secret: "1234567890123456"}
 	if err := validateFileOffer(offer, "id"); err == nil {

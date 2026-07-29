@@ -106,6 +106,17 @@ func (s *Store) ResolveDevice(query string) (Device, error) {
 	query = strings.TrimSpace(query)
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	if query == "" {
+		if len(s.devices) == 1 {
+			for _, device := range s.devices {
+				return device, nil
+			}
+		}
+		if len(s.devices) == 0 {
+			return Device{}, &APIError{Code: "device_not_found", Message: "add a trusted device before sending", Retryable: false}
+		}
+		return Device{}, &APIError{Code: "ambiguous_device", Message: "more than one trusted device is available; choose one with --to", Retryable: false}
+	}
 	if device, ok := s.devices[query]; ok {
 		return device, nil
 	}

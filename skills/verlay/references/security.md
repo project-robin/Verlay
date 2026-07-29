@@ -29,15 +29,13 @@ Pairing enables bounded autonomous delivery. Change its limit only when the
 human requests it:
 
 ```sh
-verlay --json devices authorize DEVICE_ID --max-bytes BYTES
-verlay --json devices authorize DEVICE_ID --max-bytes BYTES --folders
+verlay --json receive --always DEVICE
 ```
 
-Folder permission is separate because folders can contain many files. Return to
-manual approval with:
+Return to manual approval with:
 
 ```sh
-verlay --json devices require-approval DEVICE_ID
+verlay --json receive --ask DEVICE
 ```
 
 ## Secret handling

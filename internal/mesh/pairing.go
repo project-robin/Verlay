@@ -10,6 +10,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -66,8 +68,15 @@ type PairingManager struct {
 	ctx       context.Context
 	cancel    context.CancelFunc
 	connector pairingConnector
+	operation sync.Mutex
 	mu        sync.RWMutex
 	sessions  map[string]*pairingSession
+}
+
+type persistedPairing struct {
+	View    PairingView `json:"view"`
+	Code    string      `json:"code"`
+	Creator bool        `json:"creator"`
 }
 
 func NewPairingManager(store *Store) *PairingManager {
@@ -85,6 +94,11 @@ func NewPairingManager(store *Store) *PairingManager {
 func (m *PairingManager) Close() { m.cancel() }
 
 func (m *PairingManager) Create() (PairingCreated, error) {
+	m.operation.Lock()
+	defer m.operation.Unlock()
+	if active := m.activeSession("", true); active != nil {
+		return PairingCreated{PairingView: active.snapshot(), Code: active.code}, nil
+	}
 	code, err := newPairingCode()
 	if err != nil {
 		return PairingCreated{}, err
@@ -98,9 +112,14 @@ func (m *PairingManager) Create() (PairingCreated, error) {
 }
 
 func (m *PairingManager) Accept(code string) (PairingView, error) {
+	m.operation.Lock()
+	defer m.operation.Unlock()
 	code = normalizePairingCode(code)
 	if err := validatePairingCode(code); err != nil {
 		return PairingView{}, err
+	}
+	if active := m.activeSession(code, false); active != nil {
+		return active.snapshot(), nil
 	}
 	session, err := m.newSession(code, false)
 	if err != nil {
@@ -108,6 +127,45 @@ func (m *PairingManager) Accept(code string) (PairingView, error) {
 	}
 	go m.run(session)
 	return session.snapshot(), nil
+}
+
+func (m *PairingManager) activeSession(code string, creator bool) *pairingSession {
+	now := time.Now()
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, session := range m.sessions {
+		view := session.snapshot()
+		if session.creator == creator && view.Status == "waiting_for_peer" && view.ExpiresAt.After(now) &&
+			(code == "" || session.code == code) {
+			return session
+		}
+	}
+	return nil
+}
+
+func (m *PairingManager) Resume() error {
+	var records []persistedPairing
+	path := filepath.Join(m.store.Paths().DataDir, "pairings.json")
+	if err := readJSON(path, &records); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("read active pairings: %w", err)
+	}
+	now := time.Now()
+	for _, record := range records {
+		if record.View.PairingID == "" || record.View.Status != "waiting_for_peer" ||
+			!record.View.ExpiresAt.After(now) || validatePairingCode(record.Code) != nil {
+			continue
+		}
+		m.sessions[record.View.PairingID] = &pairingSession{
+			view: record.View, code: record.Code, creator: record.Creator,
+		}
+	}
+	if err := m.persist(); err != nil {
+		return err
+	}
+	for _, session := range m.sessions {
+		go m.run(session)
+	}
+	return nil
 }
 
 func (m *PairingManager) List() []PairingView {
@@ -148,6 +206,12 @@ func (m *PairingManager) newSession(code string, creator bool) (*pairingSession,
 	m.mu.Lock()
 	m.sessions[id] = session
 	m.mu.Unlock()
+	if err := m.persist(); err != nil {
+		m.mu.Lock()
+		delete(m.sessions, id)
+		m.mu.Unlock()
+		return nil, err
+	}
 	_ = m.store.Audit(AuditEvent{Action: "pairing." + direction, Outcome: "started", RequestID: id})
 	return session, nil
 }
@@ -158,6 +222,9 @@ func (m *PairingManager) run(session *pairingSession) {
 	room := pairingRoom(session.code)
 	connection, err := m.connector(ctx, room, m.store.Config().RelayAddress)
 	if err != nil {
+		if errors.Is(ctx.Err(), context.Canceled) {
+			return
+		}
 		m.fail(session, "relay_unreachable", err.Error(), true)
 		return
 	}
@@ -169,6 +236,9 @@ func (m *PairingManager) run(session *pairingSession) {
 
 	peer, relationshipKey, err := m.exchangeIdentity(connection, session.code, session.creator)
 	if err != nil {
+		if errors.Is(ctx.Err(), context.Canceled) {
+			return
+		}
 		code := "authentication_failed"
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			code = "pairing_expired"
@@ -192,6 +262,7 @@ func (m *PairingManager) run(session *pairingSession) {
 		return
 	}
 	session.update(func(view *PairingView) { view.Status = "paired" })
+	_ = m.persist()
 	_ = m.store.Audit(AuditEvent{Action: "pairing.complete", Outcome: "success", RequestID: session.snapshot().PairingID, DeviceID: peer.DeviceID})
 }
 
@@ -389,8 +460,24 @@ func (m *PairingManager) fail(session *pairingSession, code, message string, ret
 		view.ErrorCode = code
 		view.ErrorMessage = sanitizeError(message)
 	})
+	_ = m.persist()
 	view := session.snapshot()
 	_ = m.store.Audit(AuditEvent{Action: "pairing.failed", Outcome: "failure", RequestID: view.PairingID, DeviceID: view.PeerDeviceID, Details: map[string]any{"errorCode": code, "retryable": retryable}})
+}
+
+func (m *PairingManager) persist() error {
+	now := time.Now()
+	m.mu.RLock()
+	records := make([]persistedPairing, 0, len(m.sessions))
+	for _, session := range m.sessions {
+		view := session.snapshot()
+		if view.Status == "waiting_for_peer" && view.ExpiresAt.After(now) {
+			records = append(records, persistedPairing{View: view, Code: session.code, Creator: session.creator})
+		}
+	}
+	m.mu.RUnlock()
+	sort.Slice(records, func(i, j int) bool { return records[i].View.ExpiresAt.Before(records[j].View.ExpiresAt) })
+	return writeJSONAtomic(filepath.Join(m.store.Paths().DataDir, "pairings.json"), records, 0o600)
 }
 
 func (s *pairingSession) snapshot() PairingView {

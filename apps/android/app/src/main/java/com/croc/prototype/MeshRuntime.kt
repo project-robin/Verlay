@@ -184,7 +184,7 @@ object MeshRuntime {
     }
 
     fun sendFile(context: Context, deviceId: String, source: File): MeshCommandResult {
-        val result = command(context, "send", deviceId, source.absolutePath)
+        val result = command(context, "--background", "send", source.absolutePath, "--to", deviceId)
         val transferId = result.data?.optString("transferId").orEmpty()
         if (result.ok && transferId.isNotBlank()) {
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
