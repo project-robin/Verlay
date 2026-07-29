@@ -82,8 +82,19 @@ func TestAgentSkillAndSchemaExposeAutomationContract(t *testing.T) {
 		}
 	}
 	skill := skills.Verlay()
-	if !strings.Contains(skill, "Never run them") || !strings.Contains(skill, "verlay --json") {
-		t.Fatal("embedded skill omitted automation or approval guidance")
+	for _, guidance := range []string{
+		"Never run them",
+		"verlay --json",
+		"Always resolve the destination",
+		"device ID explicitly with `--to`",
+		"never guess from recency",
+		"`waiting_for_peer`; that is not a completed pairing",
+		"Only report an incoming item as received when its status is",
+		"cannot wake an idle agent",
+	} {
+		if !strings.Contains(skill, guidance) {
+			t.Fatalf("embedded skill omitted %q", guidance)
+		}
 	}
 }
 
