@@ -26,7 +26,7 @@ jobs:
 
       - name: Validate Agent Skill and installers
         run: |
-          bash -n scripts/bootstrap-agent.sh scripts/install-verlay-linux.sh scripts/test-install-verlay-linux.sh scripts/validate-agent-skill.sh
+          bash -n scripts/bootstrap-agent.sh scripts/install-verlay-linux.sh scripts/test-bootstrap-agent.sh scripts/test-install-verlay-linux.sh scripts/validate-agent-skill.sh
           ./scripts/validate-agent-skill.sh
           test_home="$(mktemp -d)"
           HOME="$test_home" VERLAY_SKILL_METHOD=copy ./scripts/bootstrap-agent.sh --skill-only
@@ -40,6 +40,7 @@ jobs:
           "$test_home/.local/bin/verlay" --json version
           test "$(readlink "$test_home/.local/bin/verlayd")" = verlay
           grep -q 'ExecStart=.*/verlayd' "$test_home/.config/systemd/user/verlayd.service"
+          GOCACHE="$RUNNER_TEMP/verlay-go-cache" ./scripts/test-bootstrap-agent.sh
           GOCACHE="$RUNNER_TEMP/verlay-go-cache" ./scripts/test-install-verlay-linux.sh
 
       - name: Build Verlay

@@ -117,7 +117,10 @@ if [[ "$install_runtime" == "1" && "$host_os" != "Linux" ]]; then
   esac
 fi
 
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || true)"
+script_dir=""
+if [[ -n "${BASH_SOURCE[0]:-}" ]]; then
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || true)"
+fi
 source_root=""
 temporary_checkout=""
 local_checkout=0

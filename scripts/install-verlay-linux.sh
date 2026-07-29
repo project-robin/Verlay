@@ -135,6 +135,7 @@ else
   fi
 fi
 
+chmod 0755 "$build_output"
 "$build_output" --json version >/dev/null
 "$build_output" --json schema >/dev/null
 
