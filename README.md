@@ -92,9 +92,8 @@ Skill, and run health checks:
 curl -fsSL https://raw.githubusercontent.com/project-robin/Verlay/main/scripts/bootstrap-agent.sh | bash
 ```
 
-The bootstrap uses a verified release binary when Go is unavailable. Until the
-first Verlay release is published, install from a checkout with Go 1.25 or
-newer:
+The remote bootstrap installs a checksum-verified release. Running the
+bootstrap from a source checkout builds that checkout instead:
 
 ```sh
 git clone https://github.com/project-robin/Verlay.git
@@ -121,7 +120,17 @@ data:
 ./scripts/install-verlay-linux.sh --uninstall
 ```
 
-Install the skill alone into all agent hosts supported by the Skills CLI:
+Replace a detected legacy `mesh` installation and intentionally discard its
+old identity, pairings, settings, and transfer history:
+
+```sh
+./scripts/bootstrap-agent.sh --reset-legacy
+```
+
+This reset is never performed during an ordinary install or update, and it
+does not delete received files.
+
+Install only the skill into all agent hosts supported by the Skills CLI:
 
 ```sh
 npx skills add project-robin/Verlay \
@@ -132,9 +141,11 @@ npx skills add project-robin/Verlay \
   --yes
 ```
 
-The skill teaches an agent to operate Verlay; it does not silently pair a
-device or grant receive permissions. Some agent hosts discover newly installed
-skills only after starting a new session.
+This skill-only command does **not** install the `verlay` executable or daemon.
+Use the bootstrap for a complete installation. The skill teaches an agent to
+operate Verlay; it does not silently pair a device or grant receive
+permissions. Some agent hosts discover newly installed skills or PATH changes
+only after starting a new session.
 
 `verlay` is the supported public command.
 
@@ -143,21 +154,17 @@ skills only after starting a new session.
 Create a short-lived pairing code on the first device:
 
 ```sh
-verlay --json pair create
+verlay --json add
 ```
 
 Enter that code on the second device:
 
 ```sh
-verlay --json pair accept WORD-WORD-WORD-WORD
+verlay --json add WORD-WORD-WORD-WORD
 ```
 
-The devices pair automatically after the second device enters the code:
-
-```sh
-verlay --json pair list
-verlay --json devices list
-```
+The second command waits until the devices are authenticated. Repeating
+`verlay add` reuses the active code instead of creating competing requests.
 
 Creating or entering a pairing code is an intentional human security boundary.
 Pairing also authorizes files and folders from that device to its dedicated
@@ -169,47 +176,47 @@ instruction.
 Send a file and wait until delivery is verified:
 
 ```sh
-verlay --json --wait --timeout 2h send EDITOR_TWO /path/to/video.mp4
+verlay --json send /path/to/video.mp4 --to EDITOR_TWO
 ```
 
 Send a folder while excluding generated content:
 
 ```sh
-verlay --json --wait --timeout 2h send EDITOR_TWO /path/to/project --exclude .git,node_modules
+verlay --json send /path/to/project --to EDITOR_TWO --exclude .git,node_modules
 ```
 
-Inspect transfers:
+If only one device is trusted, omit `--to`. Sending waits for verified delivery
+by default. Queue without waiting only when intended:
 
 ```sh
-verlay --json transfers list
-verlay --json transfers show TRANSFER_ID
+verlay --json --background send /path/to/video.mp4 --to EDITOR_TWO
 ```
 
 If that device was returned to manual approval, approve an incoming transfer:
 
 ```sh
-verlay --json transfers approve TRANSFER_ID --out "$HOME/Downloads/Verlay"
+verlay --json receive TRANSFER_ID
 ```
 
 ## Receive policy
 
 Pairing grants a 100 GiB-per-transfer trusted inbox by default. Change that
-limit when needed:
+device to manual approval when needed:
 
 ```sh
-verlay --json devices authorize EDITOR_TWO --max-bytes 10737418240 --folders
+verlay --json receive --ask EDITOR_TWO
 ```
 
-Return that device to manual approval without removing the pairing:
+Allow automatic delivery again:
 
 ```sh
-verlay --json devices require-approval EDITOR_TWO
+verlay --json receive --always EDITOR_TWO
 ```
 
 Revoke the relationship completely:
 
 ```sh
-verlay --json devices revoke EDITOR_TWO
+verlay --json remove EDITOR_TWO
 ```
 
 ## Verlay Mobile beta
@@ -231,24 +238,27 @@ Give this Windows-specific instruction to a terminal-capable coding agent:
 
 ```text
 Install Verlay on this Windows computer from https://github.com/project-robin/Verlay.
-Clone the repository, inspect scripts/bootstrap-agent.ps1, run it, verify Verlay
-status and doctor, and tell me when it is ready. Do not edit go.mod or downgrade
+Download and inspect scripts/bootstrap-agent.ps1, run it, verify Verlay status
+and doctor, and tell me when it is ready. Do not edit go.mod or downgrade
 dependencies. Stop before pairing or changing the relay so I can authorize
 those decisions.
 ```
 
-From a cloned checkout, the native bootstrap is:
+Download, inspect, and run the native bootstrap:
 
 ```powershell
-.\scripts\bootstrap-agent.ps1
+$installer = Join-Path $env:TEMP "bootstrap-verlay.ps1"
+Invoke-WebRequest https://raw.githubusercontent.com/project-robin/Verlay/main/scripts/bootstrap-agent.ps1 -OutFile $installer
+Get-Content $installer
+& $installer
 ```
 
-It builds and installs `verlay.exe` and `verlayd.exe`, adds Verlay to the user
-`PATH`, registers the Agent Skill, registers a user-level Task Scheduler job
-that keeps the daemon running and starts it at login, and runs health checks. It
-requires Go 1.21 or newer while the beta has
-no published binary release; Go automatically selects the newer toolchain
-declared by the repository. The script never edits `go.mod`.
+The remote bootstrap downloads a checksum-verified release. When run from a
+cloned checkout, it builds that checkout instead. It installs `verlay.exe` and
+`verlayd.exe`, adds Verlay to the user `PATH`, registers the Agent Skill with
+detected agent hosts, registers a user-level Task Scheduler job that keeps the
+daemon running and starts it at login, and runs health checks. The script never
+edits `go.mod`.
 
 GitHub releases will contain `verlay-windows-amd64.exe`. Copy it to
 `verlayd.exe` to run the same binary in daemon mode:
@@ -268,8 +278,12 @@ Automation features include:
 
 ```sh
 verlay --json status
-verlay --json devices list
-verlay --json transfers list
+verlay --json add
+verlay --json send /path/to/file --to DEVICE
+verlay --json receive
+verlay --json devices
+verlay --json transfers
+verlay --json doctor
 verlay --json schema
 verlay skill print
 ```
@@ -349,3 +363,8 @@ Verlay is currently a production-oriented beta. Bug reports should include the
 platforms involved, `verlay doctor` output with secrets removed, the transfer
 direction, and whether the failure occurred during pairing, connection, or
 transfer.
+
+Run `./scripts/test-local-two-device.sh` to exercise two isolated Verlay
+installations and a real local relay on one computer. It verifies pairing,
+automatic and manual receiving, files and folders, hashes, daemon restarts,
+durable retry, and relay reconnection without mocks.

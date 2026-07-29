@@ -3,8 +3,10 @@ package mesh
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"sync/atomic"
@@ -87,6 +89,69 @@ func TestControlChannelPinsPairedIdentity(t *testing.T) {
 	}
 	if !response.OK {
 		t.Fatalf("control response failed: %#v", response)
+	}
+}
+
+func TestControlHandshakeDisconnectIsRetryable(t *testing.T) {
+	storeA, _, _, deviceB := pairedTestStores(t)
+	managerA, err := NewControlManager(storeA, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer managerA.Close()
+	managerA.connector = func(context.Context, string, string) (net.Conn, error) {
+		client, server := net.Pipe()
+		go server.Close()
+		return client, nil
+	}
+
+	_, err = managerA.Send(context.Background(), deviceB, ControlRequest{Type: "ping"})
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("error = %v, want APIError", err)
+	}
+	if apiErr.Code != "device_unavailable" || !apiErr.Retryable {
+		t.Fatalf("error = %#v, want retryable device_unavailable", apiErr)
+	}
+}
+
+func TestControlHandshakeRejectsWrongIdentity(t *testing.T) {
+	storeA, _, _, deviceB := pairedTestStores(t)
+	untrustedStore, err := OpenStore(testPaths(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	managerA, err := NewControlManager(storeA, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer managerA.Close()
+	untrustedManager, err := NewControlManager(untrustedStore, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer untrustedManager.Close()
+	managerA.connector = func(context.Context, string, string) (net.Conn, error) {
+		client, server := net.Pipe()
+		go func() {
+			connection := tls.Server(server, &tls.Config{
+				Certificates: []tls.Certificate{untrustedManager.cert},
+				MinVersion:   tls.VersionTLS13,
+				NextProtos:   []string{"mesh-control/1"},
+			})
+			_ = connection.Handshake()
+			_ = connection.Close()
+		}()
+		return client, nil
+	}
+
+	_, err = managerA.Send(context.Background(), deviceB, ControlRequest{Type: "ping"})
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("error = %v, want APIError", err)
+	}
+	if apiErr.Code != "authentication_failed" || apiErr.Retryable {
+		t.Fatalf("error = %#v, want non-retryable authentication_failed", apiErr)
 	}
 }
 

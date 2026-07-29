@@ -25,9 +25,10 @@ import (
 var version = "dev"
 
 type options struct {
-	json    bool
-	wait    bool
-	timeout time.Duration
+	json       bool
+	wait       bool
+	timeout    time.Duration
+	timeoutSet bool
 }
 
 func main() {
@@ -93,6 +94,20 @@ func run(rawArgs []string) int {
 		return runDaemon(args[1:], opts, paths)
 	case "status":
 		return callDaemon(opts, paths, http.MethodGet, "/v1/status")
+	case "add":
+		return runAdd(args[1:], opts, paths)
+	case "receive":
+		return runReceive(args[1:], opts, paths)
+	case "cancel":
+		if len(args) != 2 {
+			return printFailure(opts.json, &meshcore.APIError{Code: "invalid_usage", Message: "usage: verlay cancel TRANSFER", Retryable: false}, 2)
+		}
+		return callDaemonWithBody(opts, paths, http.MethodPost, "/v1/transfers/"+url.PathEscape(args[1])+"/cancel", map[string]any{})
+	case "remove":
+		if len(args) != 2 {
+			return printFailure(opts.json, &meshcore.APIError{Code: "invalid_usage", Message: "usage: verlay remove DEVICE", Retryable: false}, 2)
+		}
+		return callDaemon(opts, paths, http.MethodDelete, "/v1/devices/"+url.PathEscape(args[1]))
 	case "doctor":
 		return callDaemon(opts, paths, http.MethodGet, "/v1/doctor")
 	case "relay":
@@ -211,34 +226,107 @@ func runSend(args []string, opts options, paths meshcore.Paths) int {
 	if transferID == "" {
 		return printFailure(opts.json, &meshcore.APIError{Code: "internal_error", Message: "daemon omitted the transfer ID", Retryable: false}, 10)
 	}
+	if !opts.timeoutSet {
+		opts.timeout = 2 * time.Hour
+	}
 	return waitForTransfer(opts, paths, transferID)
 }
 
 func parseSendArgs(args []string) (device, path string, exclusions []string, err error) {
-	if len(args) < 2 {
-		return "", "", nil, errors.New("usage: verlay send DEVICE PATH [--exclude PATHS]")
-	}
-	device, path = args[0], args[1]
-	for i := 2; i < len(args); i++ {
-		if args[i] != "--exclude" || i+1 >= len(args) {
-			return "", "", nil, errors.New("usage: verlay send DEVICE PATH [--exclude PATHS]")
-		}
-		i++
-		if len(args[i]) > 4096 {
-			return "", "", nil, errors.New("--exclude is too long")
-		}
-		for _, item := range strings.Split(args[i], ",") {
-			if item = strings.TrimSpace(item); item != "" {
-				exclusions = append(exclusions, item)
+	var positionals []string
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--to":
+			if i+1 >= len(args) {
+				return "", "", nil, errors.New("--to requires a device")
 			}
+			i++
+			device = args[i]
+		case "--exclude":
+			if i+1 >= len(args) {
+				return "", "", nil, errors.New("--exclude requires paths")
+			}
+			i++
+			if len(args[i]) > 4096 {
+				return "", "", nil, errors.New("--exclude is too long")
+			}
+			for _, item := range strings.Split(args[i], ",") {
+				if item = strings.TrimSpace(item); item != "" {
+					exclusions = append(exclusions, item)
+				}
+			}
+		default:
+			positionals = append(positionals, args[i])
 		}
 	}
-	return device, path, exclusions, nil
+	if device != "" && len(positionals) == 1 {
+		return device, positionals[0], exclusions, nil
+	}
+	if device == "" && len(positionals) == 1 {
+		return "", positionals[0], exclusions, nil
+	}
+	// Keep the old DEVICE PATH form as a compatibility alias.
+	if device == "" && len(positionals) == 2 {
+		return positionals[0], positionals[1], exclusions, nil
+	}
+	return "", "", nil, errors.New("usage: verlay send PATH [--to DEVICE] [--exclude PATHS]")
+}
+
+func runAdd(args []string, opts options, paths meshcore.Paths) int {
+	if len(args) == 0 {
+		return callDaemonWithBody(opts, paths, http.MethodPost, "/v1/pairings/create", map[string]any{})
+	}
+	if len(args) != 1 {
+		return printFailure(opts.json, &meshcore.APIError{Code: "invalid_usage", Message: "usage: verlay add [CODE]", Retryable: false}, 2)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), opts.timeout)
+	defer cancel()
+	client := meshcore.NewClient(paths.SocketFile, opts.timeout)
+	envelope, err := client.Call(ctx, http.MethodPost, "/v1/pairings/accept", map[string]any{"code": args[0]})
+	if err != nil {
+		return printFailure(opts.json, apiError(err), exitCode(err))
+	}
+	if !envelope.OK {
+		return printFailure(opts.json, envelope.Error, exitCode(envelope.Error))
+	}
+	if !opts.wait {
+		return printSuccess(opts.json, envelope.Data)
+	}
+	pairingID := dataString(envelope.Data, "pairingId")
+	if !opts.timeoutSet {
+		opts.timeout = 10 * time.Minute
+	}
+	return waitForPairing(opts, paths, pairingID)
+}
+
+func runReceive(args []string, opts options, paths meshcore.Paths) int {
+	if len(args) == 0 {
+		return callDaemon(opts, paths, http.MethodGet, "/v1/transfers")
+	}
+	if len(args) == 2 && (args[0] == "--always" || args[0] == "--ask") {
+		body := map[string]any{"autoReceive": args[0] == "--always"}
+		if args[0] == "--always" {
+			body["maxBytes"] = meshcore.DefaultTrustedTransferLimit
+			body["allowFolders"] = true
+		}
+		return callDaemonWithBody(opts, paths, http.MethodPost, "/v1/devices/"+url.PathEscape(args[1])+"/receive-policy", body)
+	}
+	reject := len(args) == 2 && args[1] == "--reject"
+	if len(args) != 1 && !reject {
+		return printFailure(opts.json, &meshcore.APIError{Code: "invalid_usage", Message: "usage: verlay receive [TRANSFER [--reject]] | --always DEVICE | --ask DEVICE", Retryable: false}, 2)
+	}
+	return callDaemonWithBody(opts, paths, http.MethodPost, "/v1/transfers/"+url.PathEscape(args[0])+"/decision", map[string]any{"approve": !reject})
 }
 
 func runTransfers(args []string, opts options, paths meshcore.Paths) int {
+	if len(args) == 0 {
+		return callDaemon(opts, paths, http.MethodGet, "/v1/transfers")
+	}
 	if len(args) == 1 && args[0] == "list" {
 		return callDaemon(opts, paths, http.MethodGet, "/v1/transfers")
+	}
+	if len(args) == 1 {
+		return callDaemon(opts, paths, http.MethodGet, "/v1/transfers/"+url.PathEscape(args[0]))
 	}
 	if len(args) == 2 && args[0] == "show" {
 		return callDaemon(opts, paths, http.MethodGet, "/v1/transfers/"+url.PathEscape(args[1]))
@@ -259,8 +347,14 @@ func runTransfers(args []string, opts options, paths meshcore.Paths) int {
 }
 
 func runDevices(args []string, opts options, paths meshcore.Paths) int {
+	if len(args) == 0 {
+		return callDaemon(opts, paths, http.MethodGet, "/v1/devices")
+	}
 	if len(args) == 1 && args[0] == "list" {
 		return callDaemon(opts, paths, http.MethodGet, "/v1/devices")
+	}
+	if len(args) == 1 {
+		return callDaemon(opts, paths, http.MethodGet, "/v1/devices/"+url.PathEscape(args[0]))
 	}
 	if len(args) == 2 && args[0] == "show" {
 		return callDaemon(opts, paths, http.MethodGet, "/v1/devices/"+url.PathEscape(args[1]))
@@ -316,6 +410,9 @@ func parseReceiveAuthorization(args []string) (device string, maxBytes int64, fo
 }
 
 func runPair(args []string, opts options, paths meshcore.Paths) int {
+	if len(args) == 0 {
+		return callDaemon(opts, paths, http.MethodGet, "/v1/pairings")
+	}
 	if len(args) == 1 && args[0] == "create" {
 		return callDaemonWithBody(opts, paths, http.MethodPost, "/v1/pairings/create", map[string]any{})
 	}
@@ -347,7 +444,7 @@ func callDaemonWithBody(opts options, paths meshcore.Paths, method, path string,
 }
 
 func parseOptions(args []string) ([]string, options, error) {
-	opts := options{timeout: 15 * time.Second}
+	opts := options{wait: true, timeout: 15 * time.Second}
 	filtered := make([]string, 0, len(args))
 	for i := 0; i < len(args); i++ {
 		switch {
@@ -358,6 +455,8 @@ func parseOptions(args []string) ([]string, options, error) {
 			opts.json = true
 		case args[i] == "--wait":
 			opts.wait = true
+		case args[i] == "--background":
+			opts.wait = false
 		case args[i] == "--timeout":
 			if i+1 >= len(args) {
 				return nil, opts, errors.New("--timeout requires a duration")
@@ -368,17 +467,67 @@ func parseOptions(args []string) ([]string, options, error) {
 				return nil, opts, errors.New("--timeout must be a positive duration such as 10s")
 			}
 			opts.timeout = duration
+			opts.timeoutSet = true
 		case strings.HasPrefix(args[i], "--timeout="):
 			duration, err := time.ParseDuration(strings.TrimPrefix(args[i], "--timeout="))
 			if err != nil || duration <= 0 {
 				return nil, opts, errors.New("--timeout must be a positive duration such as 10s")
 			}
 			opts.timeout = duration
+			opts.timeoutSet = true
 		default:
 			filtered = append(filtered, args[i])
 		}
 	}
 	return filtered, opts, nil
+}
+
+func waitForPairing(opts options, paths meshcore.Paths, pairingID string) int {
+	deadline := time.Now().Add(opts.timeout)
+	client := meshcore.NewClient(paths.SocketFile, opts.timeout)
+	for {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return printFailure(opts.json, &meshcore.APIError{
+				Code: "timeout", Message: "timed out waiting for the other device; the pairing request remains active", Retryable: true,
+				Details: map[string]any{"pairingId": pairingID},
+			}, 3)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), minDuration(remaining, 5*time.Second))
+		envelope, err := client.Call(ctx, http.MethodGet, "/v1/pairings", nil)
+		cancel()
+		if err != nil {
+			if apiError(err).Code == "daemon_unavailable" {
+				time.Sleep(250 * time.Millisecond)
+				continue
+			}
+			return printFailure(opts.json, apiError(err), exitCode(err))
+		}
+		if pairing := pairingData(envelope.Data, pairingID); pairing != nil {
+			status := dataString(pairing, "status")
+			if status == "paired" {
+				return printSuccess(opts.json, pairing)
+			}
+			if status == "failed" {
+				return printFailure(opts.json, &meshcore.APIError{
+					Code: dataString(pairing, "errorCode"), Message: dataString(pairing, "errorMessage"), Retryable: false,
+				}, 6)
+			}
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+}
+
+func pairingData(data any, pairingID string) map[string]any {
+	object, _ := data.(map[string]any)
+	items, _ := object["pairings"].([]any)
+	for _, item := range items {
+		pairing, _ := item.(map[string]any)
+		if dataString(pairing, "pairingId") == pairingID {
+			return pairing
+		}
+	}
+	return nil
 }
 
 func waitForTransfer(opts options, paths meshcore.Paths, transferID string) int {
@@ -396,6 +545,10 @@ func waitForTransfer(opts options, paths meshcore.Paths, transferID string) int 
 		envelope, err := client.Call(ctx, http.MethodGet, "/v1/transfers/"+url.PathEscape(transferID), nil)
 		cancel()
 		if err != nil {
+			if apiError(err).Code == "daemon_unavailable" {
+				time.Sleep(250 * time.Millisecond)
+				continue
+			}
 			return printFailure(opts.json, apiError(err), exitCode(err))
 		}
 		status := dataString(envelope.Data, "status")
@@ -483,15 +636,24 @@ func exitCode(err error) int {
 func commandSchema() map[string]any {
 	return map[string]any{
 		"apiVersion":    meshcore.APIVersion,
-		"globalOptions": []string{"--json", "--wait", "--timeout DURATION"},
+		"globalOptions": []string{"--json", "--background", "--timeout DURATION"},
 		"commands": []string{
-			"status", "doctor", "daemon start|stop|restart",
-			"relay show|set HOST:PORT --password-stdin",
+			"add [CODE]", "send PATH [--to DEVICE] [--exclude PATHS]", "receive [TRANSFER [--reject]]",
+			"receive --always|--ask DEVICE", "cancel TRANSFER", "remove DEVICE",
+			"status", "devices [DEVICE]", "transfers [TRANSFER]", "pair", "doctor", "version", "schema",
+		},
+		"administrativeCommands": []string{
+			"daemon start|stop|restart", "relay show|set HOST:PORT --password-stdin",
+			"devices rename|authorize|require-approval", "skill print",
+		},
+		"compatibilityCommands": []string{
 			"pair create|accept|list", "devices list|show|rename|revoke|authorize|require-approval", "schema", "version",
 			"send DEVICE PATH [--exclude PATHS]", "transfers list|show|approve|reject|cancel",
-			"skill print",
 		},
-		"securityBoundaries": []string{"pair create", "pair accept", "transfers approve", "transfers reject", "devices authorize", "devices require-approval", "devices revoke", "relay set"},
+		"securityBoundaries": []string{
+			"add [CODE]", "receive TRANSFER [--reject]", "receive --always|--ask DEVICE",
+			"remove DEVICE", "devices authorize", "devices require-approval", "relay set",
+		},
 		"transport": map[string]any{
 			"current":            "live encrypted relay",
 			"storesFiles":        false,
@@ -504,33 +666,32 @@ func commandSchema() map[string]any {
 const helpText = `verlay - secure cross-device CLI for Verlay
 
 Usage:
-  verlay [--json] [--wait] [--timeout 15s] COMMAND
+  verlay [--json] [--background] [--timeout DURATION] COMMAND
 
 Commands:
-  status                         Show daemon and device status
-  doctor                         Check local daemon security and health
-  relay show                     Show the relay address without its password
-  relay set HOST:PORT --password-stdin
-                                 Configure a self-hosted relay, then restart
-  daemon start|stop|restart      Control the background daemon
-  pair create                    Create a ten-minute pairing code
-  pair accept CODE               Connect using a pairing code
-  pair list                      List current pairing requests
-  devices list                   List trusted devices
-  devices show DEVICE_ID         Show one trusted device
-  devices rename DEVICE_ID NAME  Assign a local name to a trusted device
-  devices revoke DEVICE_ID       Revoke a trusted device
-  devices authorize DEVICE --max-bytes N [--folders]
-                                 Auto-receive within a bounded policy
-  devices require-approval DEVICE
-                                 Require manual approval again
-  send DEVICE PATH [--exclude PATHS]
-                                 Queue one file or folder transfer
-  transfers list                 List transfers
-  transfers show ID              Show one transfer
-  transfers approve ID [--out]   Accept an incoming transfer
-  transfers reject|cancel ID     Reject or cancel a transfer
-  schema                         Print the machine command contract
-  skill print                    Print the installed agent skill
-  version                        Print build and protocol versions
+  add [CODE]                     Add a trusted device
+  send PATH [--to DEVICE]       Send and verify delivery
+  receive [TRANSFER]            Show incoming items or accept one
+  receive TRANSFER --reject     Reject an incoming item
+  receive --always DEVICE       Automatically receive from a device
+  receive --ask DEVICE          Ask before receiving from a device
+  status                        Show devices, connections, and transfers
+  cancel TRANSFER               Cancel a transfer
+  remove DEVICE                 Remove a trusted device
+
+Inspect:
+  status                        Show the complete operational overview
+  devices [DEVICE]              List devices or inspect one
+  transfers [TRANSFER]          List transfers or inspect one
+  pair                          Show active add-device requests
+  doctor                        Run local health and security checks
+  schema                        Show every command and automation contract
+  version                       Show build and protocol versions
+
+Options:
+  --background                  Queue without waiting for completion
+  --json                        Print the stable machine-readable result
+  --timeout DURATION            Limit how long to wait
+
+Administrative and compatibility commands remain available in "verlay schema".
 `

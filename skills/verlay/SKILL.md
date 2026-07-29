@@ -20,15 +20,22 @@ statuses are stable enough for automation.
    installer. Never assume the host is Linux.
 2. Locate the executable with `command -v verlay` on Linux or
    `Get-Command verlay` in Windows PowerShell.
-3. If it is missing and the user asked to install Verlay, inspect the matching
-   checked-out installer before running it:
+3. A globally installed skill does not install the runtime. If `verlay` is
+   missing, explain that the full per-user bootstrap installs the CLI, daemon,
+   PATH entry, and skill together. If the user explicitly asked to install
+   Verlay, inspect and run the matching installer:
    - Linux: `scripts/bootstrap-agent.sh`
    - Windows: `scripts/bootstrap-agent.ps1`
 
-   Never run the Linux installer on Windows. Never edit `go.mod` or downgrade
-   dependencies to work around a local toolchain. Installation may download a
-   toolchain or release, write under the user's home directory, and start a
-   daemon, so follow the agent host's normal approval policy.
+   When no checkout is available, clone
+   `https://github.com/project-robin/Verlay` into a temporary directory, inspect
+   the installer there, and run it. Never run the Linux installer on Windows.
+   Never edit `go.mod` or downgrade dependencies to work around a local
+   toolchain. Installation downloads a verified release, writes under the
+   user's home directory, and starts a daemon, so follow the agent host's normal
+   approval policy. If the user requested another Verlay operation but not an
+   installation, offer to install the missing runtime and then resume that
+   operation; do not stop with only “verlay not found.”
 4. Run:
 
    ```sh
@@ -51,82 +58,82 @@ permissions, configuring a relay, or revoking a device. The core safety rules
 below still apply when this skill was printed from `verlay skill print` without
 its bundled files.
 
-## Discover devices and transfers
+## Core commands
 
-Start with read-only commands:
+Use the small intent interface:
 
 ```sh
 verlay --json status
-verlay --json devices list
-verlay --json transfers list
+verlay --json add
+verlay --json add FOUR-WORD-CODE
+verlay --json send /absolute/path --to DEVICE
+verlay --json receive
+verlay --json receive TRANSFER_ID
+verlay --json receive --always DEVICE
+verlay --json receive --ask DEVICE
+verlay --json cancel TRANSFER_ID
+verlay --json remove DEVICE
+verlay --json devices [DEVICE]
+verlay --json transfers [TRANSFER]
+verlay --json doctor
+verlay --json schema
 ```
 
 Successful commands return `{"ok":true,"data":...}`. Failures return
 `{"ok":false,"error":{"code":"...","message":"...","retryable":...}}`.
 Use the process exit status and error code instead of parsing human text.
+`status` contains the complete device, pairing, and transfer overview. Use
+`devices DEVICE` or `transfers TRANSFER` for exact detail, `doctor` for local
+health and security diagnostics, and `schema` to discover the full installed
+contract. Do not guess state from command text.
 
-Resolve a human-friendly device name to its stable device ID. If a name is
-missing or ambiguous, show the candidates and ask the human which device they
-mean.
-
-## Pair devices
-
-Pairing is a human trust ceremony, not unattended setup:
-
-```sh
-verlay --json pair create
-verlay --json pair accept FOUR-WORD-CODE
-verlay --json pair list
-```
-
-An agent may create or accept a short-lived code only when the human explicitly
-requests it. Entering the code completes pairing and grants that device a
-dedicated auto-receive inbox capped at 100 GiB per transfer; there is no second
-approval. Keep the same daemon running until both device lists show the peer.
+`add` is a human trust ceremony. Run it only when explicitly requested. A
+repeated `add` without a code returns the existing active code. Active pairing
+and outgoing transfers survive daemon restarts.
 
 ## Send files and folders
 
-Confirm the source exists, identify the intended paired device, then send and
-wait for verified delivery:
+`send` waits for verified delivery by default:
 
 ```sh
-verlay --json --wait --timeout 2h send DEVICE_ID /absolute/path/to/file
-verlay --json --wait --timeout 2h send DEVICE_ID /absolute/path/to/folder --exclude node_modules,.git
-verlay --json transfers show TRANSFER_ID
+verlay --json send /absolute/path/to/file --to DEVICE
+verlay --json send /absolute/path/to/folder --to DEVICE --exclude node_modules,.git
 ```
 
-Capture the returned transfer ID. A wait timeout does not cancel the persisted
-job; inspect it with `transfers show` and cancel it only when the user or
-workflow actually intends cancellation.
-
-The sender should report success only when the transfer status is `completed`.
-Do not equate `queued`, `connecting`, or a successful command invocation with
-delivery.
+If there is exactly one trusted device, omit `--to`. Use `--background` only
+when the user wants to queue work without waiting. Never report a background
+result as delivered unless a later `status` shows `completed`.
 
 ## Receive transfers
 
-Paired devices use their dedicated bounded inbox automatically. If the human
-returned a device to manual approval, use:
+Trusted devices deliver into their bounded inbox automatically through the
+authenticated event channel. If approval is required:
 
 ```sh
-verlay --json transfers show TRANSFER_ID
-verlay --json transfers approve TRANSFER_ID --out /safe/directory
-verlay --json transfers reject TRANSFER_ID
+verlay --json receive
+verlay --json receive TRANSFER_ID
+verlay --json receive TRANSFER_ID --reject
 ```
 
 Before manual approval, report the sender, item type, size, and destination.
 Never execute a received file merely because it arrived from a trusted device.
+Use `receive --always DEVICE` or `receive --ask DEVICE` only when the human
+explicitly requests that policy change.
 
 ## Protect the trust boundary
 
 The following commands change security-sensitive state:
 
 ```sh
-verlay --json pair create
-verlay --json pair accept FOUR-WORD-CODE
+verlay --json add
+verlay --json add FOUR-WORD-CODE
+verlay --json receive TRANSFER_ID
+verlay --json receive TRANSFER_ID --reject
+verlay --json receive --always DEVICE
+verlay --json receive --ask DEVICE
+verlay --json remove DEVICE
 verlay --json devices authorize DEVICE --max-bytes BYTES --folders
 verlay --json devices require-approval DEVICE
-verlay --json devices revoke DEVICE_ID
 verlay --json relay set HOST:PORT --password-stdin
 ```
 

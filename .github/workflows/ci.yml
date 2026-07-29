@@ -26,7 +26,7 @@ jobs:
 
       - name: Validate Agent Skill and installers
         run: |
-          bash -n scripts/bootstrap-agent.sh scripts/install-verlay-linux.sh scripts/validate-agent-skill.sh
+          bash -n scripts/bootstrap-agent.sh scripts/install-verlay-linux.sh scripts/test-install-verlay-linux.sh scripts/validate-agent-skill.sh
           ./scripts/validate-agent-skill.sh
           test_home="$(mktemp -d)"
           HOME="$test_home" VERLAY_SKILL_METHOD=copy ./scripts/bootstrap-agent.sh --skill-only
@@ -40,6 +40,7 @@ jobs:
           "$test_home/.local/bin/verlay" --json version
           test "$(readlink "$test_home/.local/bin/verlayd")" = verlay
           grep -q 'ExecStart=.*/verlayd' "$test_home/.config/systemd/user/verlayd.service"
+          GOCACHE="$RUNNER_TEMP/verlay-go-cache" ./scripts/test-install-verlay-linux.sh
 
       - name: Build Verlay
         run: CGO_ENABLED=0 go build -trimpath -o verlay ./cmd/verlay
@@ -62,7 +63,7 @@ jobs:
           $installRoot = Join-Path $env:RUNNER_TEMP "Verlay"
           $skillHome = Join-Path $env:RUNNER_TEMP "skills"
           try {
-            ./scripts/bootstrap-agent.ps1 -InstallRoot $installRoot -SkillHome $skillHome
+            ./scripts/bootstrap-agent.ps1 -InstallRoot $installRoot -SkillHome $skillHome -SkillMethod copy
             & "$installRoot/bin/verlay.exe" --json schema
             & "$installRoot/bin/verlay.exe" --json status
             if (-not (Get-ScheduledTask -TaskName Verlay -ErrorAction SilentlyContinue)) { throw "Verlay task was not installed" }

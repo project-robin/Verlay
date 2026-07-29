@@ -25,38 +25,39 @@ Android wraps its identity seed with Android Keystore and passes it only to the
 app-private daemon process. Pairing codes and transfer secrets are not written
 to the audit log. See [SECURITY.md](SECURITY.md) for boundaries and known gaps.
 
-## Linux install from this checkout
+## Linux installation
 
-From the repository root:
+For a complete per-user installation from any directory:
 
 ```sh
-./scripts/install-verlay-linux.sh
+curl -fsSL https://raw.githubusercontent.com/project-robin/Verlay/main/scripts/bootstrap-agent.sh | bash
 verlay status
 verlay doctor
 ```
 
-This installs `~/.local/bin/verlay` and enables `verlayd.service` as a systemd user
-service. It requires neither sudo nor a language runtime after installation.
+Running `./scripts/bootstrap-agent.sh` from a checkout builds that checkout
+instead of downloading a release. Both paths install `~/.local/bin/verlay`,
+enable `verlayd.service`, register the global Agent Skill, and verify the
+command outside the repository. They require no sudo.
 Run `./scripts/install-verlay-linux.sh --uninstall` to remove the binary and user
 service; identity and trust data are deliberately preserved.
 
 ## Windows CLI friend test
 
-Until a binary release is published, clone the repository and run the native
-bootstrap from PowerShell:
+Download, inspect, and run the native bootstrap from PowerShell:
 
 ```powershell
-.\scripts\bootstrap-agent.ps1
+$installer = Join-Path $env:TEMP "bootstrap-verlay.ps1"
+Invoke-WebRequest https://raw.githubusercontent.com/project-robin/Verlay/main/scripts/bootstrap-agent.ps1 -OutFile $installer
+Get-Content $installer
+& $installer
 ```
 
-It builds the unchanged dependency graph, installs the CLI, daemon, and Agent
-Skill, registers the daemon with Windows Task Scheduler for login persistence,
-and verifies the runtime. It requires Go 1.21 or newer so Go can select
-the toolchain declared by the repository. Do not lower the `go` directive or
-downgrade dependencies to make an older local toolchain compile.
-
-After a release is published, Windows can instead use
-`verlay-windows-amd64.exe` from that release.
+The remote bootstrap downloads and verifies the Windows release. From a source
+checkout it builds the unchanged dependency graph instead. Both paths install
+the CLI, daemon, and Agent Skill, add the CLI to the user PATH, register the
+daemon with Windows Task Scheduler for login persistence, and verify the
+runtime from an unrelated directory.
 Because beta binaries are not code-signed, Windows may ask the user to confirm
 running them.
 
@@ -71,17 +72,16 @@ Copy-Item .\verlay-windows-amd64.exe .\verlayd.exe
 Use a second PowerShell window for pairing and transfers:
 
 ```powershell
-.\verlay-windows-amd64.exe --json pair accept FOUR-WORD-CODE
-.\verlay-windows-amd64.exe --json pair list
-.\verlay-windows-amd64.exe --json devices list
-.\verlay-windows-amd64.exe --json send FEDORA C:\Users\friend\Videos\clip.mp4 --wait --timeout 2h
+.\verlay-windows-amd64.exe --json add FOUR-WORD-CODE
+.\verlay-windows-amd64.exe --json status
+.\verlay-windows-amd64.exe --json send C:\Users\friend\Videos\clip.mp4 --to FEDORA
 ```
 
-The source bootstrap manages the background daemon. Do not restart it while a
+The bootstrap manages the background daemon. Do not restart it while a
 pairing or transfer is active.
 
-After the first Verlay release, the same installer can be piped from the
-repository's raw GitHub URL. It downloads a checksum-verified Linux binary. Set
+The Linux installer can be piped from the repository's raw GitHub URL and
+downloads a checksum-verified binary. Set
 `VERLAY_REPOSITORY=OWNER/REPOSITORY` when testing a fork.
 
 ## Pairing
@@ -89,30 +89,29 @@ repository's raw GitHub URL. It downloads a checksum-verified Linux binary. Set
 On one device:
 
 ```sh
-verlay --json pair create
+verlay --json add
 ```
 
 Enter the returned code on the other device:
 
 ```sh
-verlay --json pair accept word-word-word-word
-verlay --json pair list
+verlay --json add word-word-word-word
 ```
 
 ## Autonomous receiving
 
-Pairing grants a dedicated inbox with a 100 GiB per-transfer limit. Change the
-limit when needed:
+Pairing grants a dedicated inbox with a 100 GiB per-transfer limit. Return to
+manual approval when needed:
 
 ```sh
-verlay --json devices authorize EDITOR_TWO --max-bytes 10737418240 --folders
+verlay --json receive --ask EDITOR_TWO
 ```
 
 Files from that device are delivered without a second click. Return to manual
 approval while keeping the pairing with:
 
 ```sh
-verlay --json devices require-approval EDITOR_TWO
+verlay --json receive --always EDITOR_TWO
 ```
 
 Pairing, receive-policy changes, relay changes, and revocation are human
@@ -122,15 +121,15 @@ without explicit instruction.
 ## Sending files and folders
 
 ```sh
-verlay --json devices list
-verlay --json --wait --timeout 2h send EDITOR_TWO /path/to/video.mp4
-verlay --json --wait --timeout 2h send EDITOR_TWO /path/to/project --exclude .git,node_modules
-verlay --json transfers list
-verlay --json transfers approve TRANSFER_ID --out "$HOME/Downloads/Verlay"
+verlay --json status
+verlay --json send /path/to/video.mp4 --to EDITOR_TWO
+verlay --json send /path/to/project --to EDITOR_TWO --exclude .git,node_modules
+verlay --json receive
+verlay --json receive TRANSFER_ID
 ```
 
-Agents should use `--wait` and report success only at `completed`. A wait
-timeout does not cancel the durable queue entry.
+Sending waits for `completed` by default. A timeout does not cancel the durable
+queue entry.
 
 The scheduler persists outgoing jobs, processes them FIFO, permits two
 concurrent transfers globally, and permits one active transfer per peer. An

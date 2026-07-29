@@ -60,15 +60,18 @@ type Config struct {
 }
 
 type Status struct {
-	APIVersion      string    `json:"apiVersion"`
-	ProtocolVersion int       `json:"protocolVersion"`
-	Version         string    `json:"version"`
-	DeviceID        string    `json:"deviceId"`
-	DeviceName      string    `json:"deviceName"`
-	Platform        string    `json:"platform"`
-	RelayAddress    string    `json:"relayAddress"`
-	PairedDevices   int       `json:"pairedDevices"`
-	StartedAt       time.Time `json:"startedAt"`
+	APIVersion      string         `json:"apiVersion"`
+	ProtocolVersion int            `json:"protocolVersion"`
+	Version         string         `json:"version"`
+	DeviceID        string         `json:"deviceId"`
+	DeviceName      string         `json:"deviceName"`
+	Platform        string         `json:"platform"`
+	RelayAddress    string         `json:"relayAddress"`
+	PairedDevices   int            `json:"pairedDevices"`
+	StartedAt       time.Time      `json:"startedAt"`
+	Pairings        []PairingView  `json:"pairings"`
+	Devices         []Device       `json:"devices"`
+	Transfers       []TransferView `json:"transfers"`
 }
 
 type DoctorCheck struct {

@@ -53,6 +53,26 @@ func TestStorePersistsProtectedIdentity(t *testing.T) {
 	}
 }
 
+func TestResolveOnlyDeviceWithoutAName(t *testing.T) {
+	store, err := OpenStore(testPaths(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	device := Device{
+		DeviceID:        "only-device",
+		Name:            "Phone",
+		PublicKey:       base64.RawURLEncoding.EncodeToString(make([]byte, 32)),
+		RelationshipKey: base64.RawURLEncoding.EncodeToString(make([]byte, 32)),
+	}
+	if err := store.PutDevice(device); err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := store.ResolveDevice("")
+	if err != nil || resolved.DeviceID != device.DeviceID {
+		t.Fatalf("resolved device = %#v, err=%v", resolved, err)
+	}
+}
+
 func TestExternalIdentitySeedIsNotPersisted(t *testing.T) {
 	seed := make([]byte, 32)
 	for i := range seed {

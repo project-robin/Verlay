@@ -8,6 +8,7 @@ install_skill=1
 start_service="${VERLAY_INSTALL_START_SERVICE:-1}"
 skill_method="${VERLAY_SKILL_METHOD:-auto}"
 install_source="${VERLAY_INSTALL_SOURCE:-auto}"
+reset_legacy=0
 declare -a agent_hosts=()
 
 usage() {
@@ -25,6 +26,7 @@ Options:
   --version VERSION       Release tag or branch to install (default: latest)
   --repository OWNER/REPO Source repository (default: project-robin/Verlay)
   --no-start              Install verlay/verlayd without starting verlayd
+  --reset-legacy          Delete state from a detected legacy mesh installation
   -h, --help              Show this help
 
 The bootstrap never pairs devices, approves verification codes, authorizes automatic
@@ -73,6 +75,9 @@ while (($#)); do
     --no-start)
       start_service=0
       ;;
+    --reset-legacy)
+      reset_legacy=1
+      ;;
     -h|--help)
       usage
       exit 0
@@ -93,6 +98,12 @@ case "$install_source" in
   auto|checkout|release) ;;
   *) fail "--source must be auto, checkout, or release" ;;
 esac
+if [[ "$reset_legacy" == "1" && "$install_runtime" != "1" ]]; then
+  fail "--reset-legacy requires a runtime installation"
+fi
+if [[ "$reset_legacy" == "1" && "$start_service" != "1" ]]; then
+  fail "--reset-legacy cannot be combined with --no-start"
+fi
 
 host_os="$(uname -s)"
 if [[ "$install_runtime" == "1" && "$host_os" != "Linux" ]]; then
@@ -109,11 +120,13 @@ fi
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || true)"
 source_root=""
 temporary_checkout=""
+local_checkout=0
 
 if [[ -n "$script_dir" &&
       -f "$script_dir/../go.mod" &&
       -f "$script_dir/../skills/verlay/SKILL.md" ]]; then
   source_root="$(cd "$script_dir/.." && pwd)"
+  local_checkout=1
 else
   command -v git >/dev/null ||
     fail "git is required when bootstrap-agent.sh is run outside a checkout"
@@ -127,16 +140,23 @@ else
   fi
   source_root="$temporary_checkout/repo"
 fi
+if [[ "$install_source" == "auto" && "$local_checkout" != "1" ]]; then
+  install_source=release
+fi
 
 "$source_root/scripts/validate-agent-skill.sh"
 
 if [[ "$install_runtime" == "1" ]]; then
   printf 'Installing the Verlay runtime...\n'
+  installer_args=()
+  if [[ "$reset_legacy" == "1" ]]; then
+    installer_args+=(--reset-legacy)
+  fi
     VERLAY_REPOSITORY="$repository" \
     VERLAY_VERSION="$version" \
     VERLAY_INSTALL_SOURCE="$install_source" \
     VERLAY_INSTALL_START_SERVICE="$start_service" \
-    "$source_root/scripts/install-verlay-linux.sh"
+    "$source_root/scripts/install-verlay-linux.sh" "${installer_args[@]}"
 fi
 
 skill_home="${VERLAY_SKILL_HOME:-$HOME/.agents/skills}"
@@ -150,6 +170,16 @@ if [[ "$install_skill" == "1" ]]; then
     "$canonical_skill/references/command-reference.md"
   install -m 0644 "$source_root/skills/verlay/references/security.md" \
     "$canonical_skill/references/security.md"
+
+  if ((${#agent_hosts[@]} == 0)); then
+    command -v codex >/dev/null 2>&1 && agent_hosts+=(codex)
+    command -v pi >/dev/null 2>&1 && agent_hosts+=(pi)
+    command -v claude >/dev/null 2>&1 && agent_hosts+=(claude-code)
+    command -v cursor >/dev/null 2>&1 && agent_hosts+=(cursor)
+    command -v opencode >/dev/null 2>&1 && agent_hosts+=(opencode)
+    command -v copilot >/dev/null 2>&1 && agent_hosts+=(github-copilot)
+    command -v gemini >/dev/null 2>&1 && agent_hosts+=(gemini-cli)
+  fi
 
   use_skills_cli=0
   if [[ "$skill_method" == "skills-cli" ]]; then
@@ -178,20 +208,74 @@ if [[ "$install_skill" == "1" ]]; then
       printf 'Skills CLI registration failed; the standard skill remains at %s.\n' \
         "$canonical_skill" >&2
     fi
-  elif ((${#agent_hosts[@]})); then
-    printf 'Agent host flags require npx; the standard skill was installed at %s.\n' \
+  elif [[ "$skill_method" != "copy" ]] && ((${#agent_hosts[@]})); then
+    printf 'Skills CLI unavailable; known detected hosts will receive direct copies from %s.\n' \
       "$canonical_skill" >&2
   fi
+
+  for host in "${agent_hosts[@]}"; do
+    case "$host" in
+      codex) host_skill="$HOME/.codex/skills/verlay" ;;
+      pi) host_skill="$HOME/.pi/agent/skills/verlay" ;;
+      claude-code) host_skill="$HOME/.claude/skills/verlay" ;;
+      cursor) host_skill="$HOME/.cursor/skills/verlay" ;;
+      opencode) host_skill="${XDG_CONFIG_HOME:-$HOME/.config}/opencode/skills/verlay" ;;
+      github-copilot) host_skill="$HOME/.copilot/skills/verlay" ;;
+      gemini-cli) host_skill="$HOME/.gemini/skills/verlay" ;;
+      *) continue ;;
+    esac
+    mkdir -p "$host_skill/references"
+    install -m 0644 "$source_root/skills/verlay/SKILL.md" "$host_skill/SKILL.md"
+    install -m 0644 "$source_root/skills/verlay/references/command-reference.md" \
+      "$host_skill/references/command-reference.md"
+    install -m 0644 "$source_root/skills/verlay/references/security.md" \
+      "$host_skill/references/security.md"
+  done
 fi
 
 verlay_binary="${VERLAY_INSTALL_ROOT:-$HOME/.local}/bin/verlay"
 if [[ "$install_runtime" == "1" ]]; then
+  binary_dir="$(dirname "$verlay_binary")"
+  case ":$PATH:" in
+    *":$binary_dir:"*) ;;
+    *)
+      shell_name="$(basename "${SHELL:-sh}")"
+      case "$shell_name" in
+        fish)
+          profile="$HOME/.config/fish/conf.d/verlay.fish"
+          profile_line="fish_add_path --path \"$binary_dir\""
+          ;;
+        zsh)
+          profile="$HOME/.zprofile"
+          profile_line="export PATH=\"$binary_dir:\$PATH\""
+          ;;
+        *)
+          profile="$HOME/.profile"
+          profile_line="export PATH=\"$binary_dir:\$PATH\""
+          ;;
+      esac
+      mkdir -p "$(dirname "$profile")"
+      if [[ ! -f "$profile" ]] || ! grep -Fq '# Verlay CLI' "$profile"; then
+        {
+          printf '\n# Verlay CLI\n'
+          printf '%s\n' "$profile_line"
+        } >>"$profile"
+      fi
+      export PATH="$binary_dir:$PATH"
+      printf 'Added %s to the user PATH in %s.\n' "$binary_dir" "$profile"
+      ;;
+  esac
   "$verlay_binary" --json version
   "$verlay_binary" --json schema >/dev/null
   if [[ "$start_service" == "1" ]]; then
     "$verlay_binary" --json status
     "$verlay_binary" --json doctor
   fi
+  (
+    cd "${TMPDIR:-/tmp}"
+    command -v verlay >/dev/null
+    verlay --json version >/dev/null
+  )
 fi
 
 printf '\nVerlay bootstrap complete.\n'

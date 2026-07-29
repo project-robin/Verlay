@@ -30,6 +30,8 @@ import (
 
 const maxControlMessageSize = 1 << 20
 
+var errPeerAuthentication = errors.New("peer authentication failed")
+
 type ControlRequest struct {
 	ProtocolVersion int             `json:"protocolVersion"`
 	RequestID       string          `json:"requestId"`
@@ -123,7 +125,10 @@ func (m *ControlManager) Send(ctx context.Context, peer Device, request ControlR
 		_ = connection.SetDeadline(deadline)
 	}
 	if err := connection.HandshakeContext(ctx); err != nil {
-		return ControlResponse{}, &APIError{Code: "authentication_failed", Message: "trusted-device authentication failed", Retryable: false, Details: map[string]any{"cause": sanitizeError(err.Error())}}
+		if errors.Is(err, errPeerAuthentication) {
+			return ControlResponse{}, &APIError{Code: "authentication_failed", Message: "trusted-device authentication failed", Retryable: false, Details: map[string]any{"cause": sanitizeError(err.Error())}}
+		}
+		return ControlResponse{}, &APIError{Code: "device_unavailable", Message: "trusted-device connection was interrupted", Retryable: true, Details: map[string]any{"cause": sanitizeError(err.Error())}}
 	}
 	if err := writeControlFrame(connection, request); err != nil {
 		return ControlResponse{}, err
@@ -217,23 +222,23 @@ func (m *ControlManager) tlsConfig(peer Device, server bool) *tls.Config {
 		NextProtos:         []string{"mesh-control/1"},
 		VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
 			if len(rawCerts) != 1 {
-				return errors.New("peer sent an invalid certificate chain")
+				return fmt.Errorf("%w: peer sent an invalid certificate chain", errPeerAuthentication)
 			}
 			certificate, err := x509.ParseCertificate(rawCerts[0])
 			if err != nil {
-				return err
+				return fmt.Errorf("%w: invalid peer certificate: %v", errPeerAuthentication, err)
 			}
 			publicKey, ok := certificate.PublicKey.(ed25519.PublicKey)
 			if !ok {
-				return errors.New("peer certificate does not use Ed25519")
+				return fmt.Errorf("%w: peer certificate does not use Ed25519", errPeerAuthentication)
 			}
 			expected, err := base64.RawURLEncoding.DecodeString(peer.PublicKey)
 			if err != nil || !bytes.Equal(publicKey, expected) {
-				return errors.New("peer certificate does not match the paired identity")
+				return fmt.Errorf("%w: peer certificate does not match the paired identity", errPeerAuthentication)
 			}
 			digest := sha256.Sum256(publicKey)
 			if hex.EncodeToString(digest[:16]) != peer.DeviceID {
-				return errors.New("peer certificate device ID mismatch")
+				return fmt.Errorf("%w: peer certificate device ID mismatch", errPeerAuthentication)
 			}
 			return nil
 		},
