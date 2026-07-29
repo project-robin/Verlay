@@ -27,12 +27,18 @@ to the audit log. See [SECURITY.md](SECURITY.md) for boundaries and known gaps.
 
 ## Linux installation
 
-For a complete per-user installation from any directory:
+The release installer supports Linux x86_64 and ARM64 with systemd user
+services. It requires Git, curl, and sha256sum. For a complete per-user
+installation from any directory:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/project-robin/Verlay/main/scripts/bootstrap-agent.sh | bash
-verlay status
-verlay doctor
+curl -fsSL https://raw.githubusercontent.com/project-robin/Verlay/main/scripts/bootstrap-agent.sh |
+  bash -s -- --source release
+(cd /tmp && command -v verlay && verlay --json version)
+verlay --json status
+verlay --json doctor
+systemctl --user is-active verlayd.service
+test -f "$HOME/.agents/skills/verlay/SKILL.md"
 ```
 
 Running `./scripts/bootstrap-agent.sh` from a checkout builds that checkout
@@ -44,13 +50,15 @@ service; identity and trust data are deliberately preserved.
 
 ## Windows CLI friend test
 
-Download, inspect, and run the native bootstrap from PowerShell:
+The current friend-test installer supports Windows x64 and requires PowerShell,
+Git in `PATH`, network access to GitHub, and access to user-level Task
+Scheduler. Download, inspect, and run the release bootstrap from PowerShell:
 
 ```powershell
 $installer = Join-Path $env:TEMP "bootstrap-verlay.ps1"
 Invoke-WebRequest https://raw.githubusercontent.com/project-robin/Verlay/main/scripts/bootstrap-agent.ps1 -OutFile $installer
 Get-Content $installer
-& $installer
+& $installer -Source release
 ```
 
 The remote bootstrap downloads and verifies the Windows release. From a source
@@ -59,7 +67,24 @@ the CLI, daemon, and Agent Skill, add the CLI to the user PATH, register the
 daemon with Windows Task Scheduler for login persistence, and verify the
 runtime from an unrelated directory.
 Because beta binaries are not code-signed, Windows may ask the user to confirm
-running them.
+running them. Do not bypass that approval automatically. Start a new agent
+session after installation so the host reloads its PATH and global skill.
+
+Verify the installation before pairing:
+
+```powershell
+Push-Location $env:TEMP
+Get-Command verlay
+verlay --json version
+verlay --json status
+verlay --json doctor
+Get-ScheduledTask -TaskName Verlay
+Test-Path (Join-Path $HOME ".agents\skills\verlay\SKILL.md")
+Pop-Location
+```
+
+The Windows installer is exercised in CI. Physical Linux-to-Windows pairing,
+transfer, notification, and reboot-persistence testing remains outstanding.
 
 For a manually downloaded release binary, keep the daemon open in one
 PowerShell window:

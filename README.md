@@ -35,9 +35,9 @@ The current beta provides:
 
 | Platform | Current status |
 | --- | --- |
-| Linux | CLI and background daemon; physically tested with Android |
+| Linux (x86_64 and ARM64) | CLI and background daemon; physically tested with Android |
 | Verlay Mobile (Android) | Functional beta app; bidirectional single-file transfer tested |
-| Windows | CLI and login-started background daemon; physical verification pending |
+| Windows (x64) | CLI and login-started background daemon; installer CI passes, physical verification pending |
 | macOS and Verlay Mobile (iOS) | Planned, not currently supported |
 
 Folder transfer, recovery after interruption, concurrent multi-peer transfers,
@@ -49,16 +49,29 @@ verification before a production claim.
 This is the platform-neutral installation instruction:
 
 ```text
-Install Verlay from https://github.com/project-robin/Verlay.
+Install the latest published Verlay release from
+https://github.com/project-robin/Verlay.
+
 First identify this computer's operating system and CPU architecture; do not
-assume it is Linux. Clone the repository and read the matching installation
-section in README.md. On Linux, inspect and run scripts/bootstrap-agent.sh. On
-Windows, inspect and run scripts/bootstrap-agent.ps1 from PowerShell. Do not run
-the Linux installer on Windows, do not edit go.mod, and do not downgrade
-dependencies. Verify `verlay --json status` and `verlay --json doctor`, then
-tell me it is ready. Stop before pairing or changing the relay so I can
-authorize those security decisions. If the operating system is unsupported, stop and explain
-that instead of improvising an installation.
+assume it is Linux. Read the matching installation section in README.md and
+check its prerequisites. Do not manually clone or build the repository for a
+normal installation.
+
+On Linux, download and inspect scripts/bootstrap-agent.sh, then run it with
+`--source release`. On Windows x64, use PowerShell to download and inspect
+scripts/bootstrap-agent.ps1, then run it with `-Source release`. Do not run the
+Linux installer on Windows. If a prerequisite is missing, stop and ask before
+installing it.
+
+After installation, verify from a directory outside the repository that
+`verlay` is globally available. Check version, status, doctor, the background
+service or Scheduled Task, and `~/.agents/skills/verlay/SKILL.md`. Tell me the
+installed version and paths, then tell me to start a new agent session so it
+can load the new PATH and skill.
+
+Stop before pairing, changing the relay, or granting receive permissions so I
+can authorize those security decisions. If the operating system or architecture
+is unsupported, stop and explain that instead of improvising an installation.
 ```
 
 ## Install the Linux beta
@@ -66,7 +79,9 @@ that instead of improvising an installation.
 Requirements:
 
 - Linux with systemd user services;
-- Git.
+- an x86_64 or ARM64 CPU;
+- Git and `curl`;
+- `sha256sum` (normally provided by GNU coreutils).
 
 ### Linux-specific agent instruction
 
@@ -74,14 +89,21 @@ Paste this instruction into Codex, Claude Code, Copilot, Cursor, or another
 terminal-capable coding agent:
 
 ```text
-Install Verlay on this Linux computer from https://github.com/project-robin/Verlay.
-Inspect scripts/bootstrap-agent.sh before running it. Run the bootstrap,
-verify verlay status and doctor, and tell me when it is ready. Stop before
-pairing or changing the relay so I can authorize those security decisions.
+Install the latest published Verlay release on this Linux computer from
+https://github.com/project-robin/Verlay. Confirm that this is Linux x86_64 or
+ARM64 with a working systemd user service, Git, curl, and sha256sum. Download
+and inspect scripts/bootstrap-agent.sh, then run it with `--source release`.
+Do not build from source.
+
+From a directory outside the repository, verify the global `verlay` command,
+version, status, doctor, verlayd.service, and the global Agent Skill. Tell me
+the installed version and paths, then tell me to start a new agent session.
+Stop before pairing, changing the relay, or granting receive permissions.
 ```
 
-The agent can clone the repository and complete the installation. The only
-required interactive boundary is first-device pairing and permission approval.
+The bootstrap fetches the release and installation files itself. The only
+required interactive boundaries are missing prerequisites, operating-system
+approval for an unsigned binary, first-device pairing, and permission changes.
 
 ### One-command setup
 
@@ -89,11 +111,13 @@ Install the runtime, start its Linux user daemon, register the standard Agent
 Skill, and run health checks:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/project-robin/Verlay/main/scripts/bootstrap-agent.sh | bash
+curl -fsSL https://raw.githubusercontent.com/project-robin/Verlay/main/scripts/bootstrap-agent.sh |
+  bash -s -- --source release
 ```
 
-The remote bootstrap installs a checksum-verified release. Running the
-bootstrap from a source checkout builds that checkout instead:
+The remote bootstrap installs the latest checksum-verified release. To
+intentionally build a source checkout instead, install a compatible Go
+toolchain and run:
 
 ```sh
 git clone https://github.com/project-robin/Verlay.git
@@ -109,8 +133,12 @@ require `sudo`.
 Verify the installation:
 
 ```sh
-verlay status
-verlay doctor
+(cd /tmp && command -v verlay && verlay --json version)
+verlay --json status
+verlay --json doctor
+systemctl --user is-enabled verlayd.service
+systemctl --user is-active verlayd.service
+test -f "$HOME/.agents/skills/verlay/SKILL.md"
 ```
 
 Uninstall the binary and service while preserving device identity and pairing
@@ -145,7 +173,8 @@ This skill-only command does **not** install the `verlay` executable or daemon.
 Use the bootstrap for a complete installation. The skill teaches an agent to
 operate Verlay; it does not silently pair a device or grant receive
 permissions. Some agent hosts discover newly installed skills or PATH changes
-only after starting a new session.
+only after starting a new session. Start a new agent session before testing the
+skill from another directory.
 
 `verlay` is the supported public command.
 
@@ -234,14 +263,26 @@ Build instructions and requirements are in
 
 ## Windows beta
 
+Requirements:
+
+- Windows x64 with PowerShell and access to user-level Task Scheduler;
+- Git in `PATH` (the current remote bootstrap uses it to fetch the skill and
+  installation files);
+- network access to GitHub.
+
 Give this Windows-specific instruction to a terminal-capable coding agent:
 
 ```text
-Install Verlay on this Windows computer from https://github.com/project-robin/Verlay.
-Download and inspect scripts/bootstrap-agent.ps1, run it, verify Verlay status
-and doctor, and tell me when it is ready. Do not edit go.mod or downgrade
-dependencies. Stop before pairing or changing the relay so I can authorize
-those decisions.
+Install the latest published Verlay release on this Windows computer from
+https://github.com/project-robin/Verlay. Confirm that this is Windows x64 and
+that Git is available in PATH. If Git is missing, stop and ask before installing
+it. Download and inspect scripts/bootstrap-agent.ps1, then run it from
+PowerShell with `-Source release`. Do not clone or build from source.
+
+From a directory outside the repository, verify Get-Command verlay, version,
+status, doctor, the Verlay Scheduled Task, and the global Agent Skill. Tell me
+the installed version and paths, then tell me to start a new agent session.
+Stop before pairing, changing the relay, or granting receive permissions.
 ```
 
 Download, inspect, and run the native bootstrap:
@@ -250,7 +291,7 @@ Download, inspect, and run the native bootstrap:
 $installer = Join-Path $env:TEMP "bootstrap-verlay.ps1"
 Invoke-WebRequest https://raw.githubusercontent.com/project-robin/Verlay/main/scripts/bootstrap-agent.ps1 -OutFile $installer
 Get-Content $installer
-& $installer
+& $installer -Source release
 ```
 
 The remote bootstrap downloads a checksum-verified release. When run from a
@@ -260,6 +301,24 @@ detected agent hosts, registers a user-level Task Scheduler job that keeps the
 daemon running and starts it at login, and runs health checks. The script never
 edits `go.mod`.
 
+Verify the completed installation from an unrelated directory:
+
+```powershell
+Push-Location $env:TEMP
+Get-Command verlay
+verlay --json version
+verlay --json status
+verlay --json doctor
+Get-ScheduledTask -TaskName Verlay
+Test-Path (Join-Path $HOME ".agents\skills\verlay\SKILL.md")
+Pop-Location
+```
+
+The Windows installer is exercised in CI, but physical Linux-to-Windows
+pairing, transfer, notification, and reboot-persistence testing is still
+outstanding. Because the beta executable is not code-signed, Windows may ask
+the user to approve it. Do not bypass that prompt automatically.
+
 GitHub releases will contain `verlay-windows-amd64.exe`. Copy it to
 `verlayd.exe` to run the same binary in daemon mode:
 
@@ -268,8 +327,8 @@ Copy-Item .\verlay-windows-amd64.exe .\verlayd.exe
 .\verlayd.exe
 ```
 
-Physical Linux-to-Windows verification remains outstanding. See
-[docs/VERLAY_BETA.md](docs/VERLAY_BETA.md) for the complete friend-test workflow.
+See [docs/VERLAY_BETA.md](docs/VERLAY_BETA.md) for the complete friend-test
+workflow.
 
 ## Agent interface
 
