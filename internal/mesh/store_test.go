@@ -129,16 +129,18 @@ func TestConfiguredDeviceNamePersistsWithoutChangingIdentity(t *testing.T) {
 }
 
 func TestStoreRedactsRelationshipKeyAndRevokes(t *testing.T) {
-	store, err := OpenStore(testPaths(t))
+	paths := testPaths(t)
+	store, err := OpenStore(paths)
 	if err != nil {
 		t.Fatal(err)
 	}
+	relationshipKey := base64.RawURLEncoding.EncodeToString(make([]byte, 32))
 	device := Device{
 		DeviceID:        "phone-1",
 		Name:            "Android phone",
 		Platform:        "android/arm64",
 		PublicKey:       "public",
-		RelationshipKey: "secret",
+		RelationshipKey: relationshipKey,
 		Capabilities:    []string{"files.request"},
 		PairedAt:        time.Now().UTC(),
 	}
@@ -150,7 +152,7 @@ func TestStoreRedactsRelationshipKeyAndRevokes(t *testing.T) {
 		t.Fatalf("relationship key leaked: %#v", listed)
 	}
 	stored, ok := store.Device(device.DeviceID)
-	if !ok || stored.RelationshipKey != "secret" {
+	if !ok || stored.RelationshipKey != relationshipKey {
 		t.Fatalf("internal trust record missing: %#v", stored)
 	}
 	renamed, err := store.RenameDevice(device.DeviceID, "My phone")
@@ -161,7 +163,7 @@ func TestStoreRedactsRelationshipKeyAndRevokes(t *testing.T) {
 		t.Fatalf("unexpected renamed device: %#v", renamed)
 	}
 	stored, ok = store.Device(device.DeviceID)
-	if !ok || stored.Name != "My phone" || stored.RelationshipKey != "secret" {
+	if !ok || stored.Name != "My phone" || stored.RelationshipKey != relationshipKey {
 		t.Fatalf("rename did not preserve trust record: %#v", stored)
 	}
 	revoked, err := store.RevokeDevice(device.DeviceID)
@@ -170,6 +172,23 @@ func TestStoreRedactsRelationshipKeyAndRevokes(t *testing.T) {
 	}
 	if len(store.Devices()) != 0 {
 		t.Fatal("revoked device remains visible")
+	}
+	revocations := store.RevokedDevices()
+	if len(revocations) != 1 || revocations[0].RelationshipKey != "" || revocations[0].RevocationRoom == "" {
+		t.Fatalf("invalid revocation tombstone: %#v", revocations)
+	}
+	reopened, err := OpenStore(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(reopened.Devices()) != 0 || len(reopened.RevokedDevices()) != 1 {
+		t.Fatal("revocation tombstone did not persist")
+	}
+	if err := reopened.PutDevice(device); err != nil {
+		t.Fatal(err)
+	}
+	if len(reopened.Devices()) != 1 || len(reopened.RevokedDevices()) != 0 {
+		t.Fatal("re-pairing did not replace the revocation tombstone")
 	}
 }
 

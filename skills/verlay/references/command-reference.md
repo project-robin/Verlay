@@ -38,8 +38,11 @@ verlay --json remove DEVICE
 
 Pairing codes expire after ten minutes and are not long-term credentials.
 Friendly names are local labels; the stable device ID is the unambiguous
-automation identifier. Revocation is also local: run it on both devices when
-the human wants the relationship removed from both device lists.
+automation identifier. Revocation takes effect locally immediately. The daemon
+keeps a limited tombstone without the relationship key so the other device
+learns `device_revoked` on its next authenticated contact and removes its stale
+local entry. An offline peer cannot be distinguished from a removed peer until
+it reconnects.
 The daemon must remain running until pairing finishes; do not create a second
 code or restart the daemon while the first request is active.
 
@@ -73,6 +76,11 @@ queue. Use `--background` only to return after queueing. Both devices need to be
 online simultaneously for bytes to move. If a peer or network is temporarily
 unavailable, the daemon retries the persisted transfer. A `--wait` timeout
 stops that CLI wait but does not cancel the job.
+
+The `devices` command is a local trust list, not a liveness probe. The send
+handshake checks mutual trust without a separate ping. A reachable peer that
+removed this relationship returns non-retryable `device_revoked`; Verlay then
+removes the stale local device and the user must pair again before sending.
 
 Use `transfers show` until the state becomes one of:
 

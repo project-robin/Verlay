@@ -137,16 +137,33 @@ func (m *ControlManager) Send(ctx context.Context, peer Device, request ControlR
 	if err := readControlFrame(connection, &response); err != nil {
 		return ControlResponse{}, err
 	}
+	if !response.OK && response.Error != nil && response.Error.Code == "device_revoked" {
+		if _, err := m.store.RevokeDevice(peer.DeviceID); err != nil {
+			return ControlResponse{}, &APIError{Code: "state_write_failed", Message: "peer revoked this device, but local trust state could not be updated", Retryable: false}
+		}
+	}
 	return response, nil
 }
 
 func (m *ControlManager) reconcileListeners() {
 	devices := m.store.Devices()
-	wanted := make(map[string]Device, len(devices))
+	type target struct {
+		peer Device
+		room string
+	}
+	wanted := make(map[string]target, len(devices))
 	for _, visible := range devices {
 		device, ok := m.store.Device(visible.DeviceID)
 		if ok {
-			wanted[device.DeviceID] = device
+			room, err := controlRoom(device.RelationshipKey, m.store.Identity().DeviceID)
+			if err == nil {
+				wanted["trusted/"+device.DeviceID] = target{peer: device, room: room}
+			}
+		}
+	}
+	for _, device := range m.store.RevokedDevices() {
+		if device.RevocationRoom != "" {
+			wanted["revoked/"+device.DeviceID] = target{peer: device, room: device.RevocationRoom}
 		}
 	}
 	m.mu.Lock()
@@ -157,25 +174,21 @@ func (m *ControlManager) reconcileListeners() {
 			delete(m.listeners, id)
 		}
 	}
-	for id, device := range wanted {
+	for id, target := range wanted {
 		if _, ok := m.listeners[id]; ok {
 			continue
 		}
 		ctx, cancel := context.WithCancel(m.ctx)
 		m.listeners[id] = cancel
 		m.wg.Add(1)
-		go func(peer Device) {
+		go func(peer Device, room string) {
 			defer m.wg.Done()
-			m.listenForPeer(ctx, peer)
-		}(device)
+			m.listenForPeer(ctx, peer, room)
+		}(target.peer, target.room)
 	}
 }
 
-func (m *ControlManager) listenForPeer(ctx context.Context, peer Device) {
-	room, err := controlRoom(peer.RelationshipKey, m.store.Identity().DeviceID)
-	if err != nil {
-		return
-	}
+func (m *ControlManager) listenForPeer(ctx context.Context, peer Device, room string) {
 	backoff := time.Second
 	for ctx.Err() == nil {
 		raw, err := m.connector(ctx, room, m.store.Config().RelayAddress)
@@ -210,7 +223,12 @@ func (m *ControlManager) handleIncomingConnection(ctx context.Context, peer Devi
 		_ = writeControlFrame(connection, ControlResponse{OK: false, Error: &APIError{Code: "protocol_mismatch", Message: "peer protocol version is unsupported", Retryable: false}})
 		return
 	}
-	response := m.handler(ctx, peer, request)
+	current, trusted := m.store.Device(peer.DeviceID)
+	if !trusted {
+		_ = writeControlFrame(connection, ControlResponse{OK: false, Error: &APIError{Code: "device_revoked", Message: "the peer removed this trusted relationship; pair again before sending", Retryable: false}})
+		return
+	}
+	response := m.handler(ctx, current, request)
 	_ = writeControlFrame(connection, response)
 }
 

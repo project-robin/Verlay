@@ -122,7 +122,7 @@ start_relay
 start_node_a
 start_node_b
 
-printf '1/7 pairing survives restart\n'
+printf '1/8 pairing survives restart\n'
 pairing_json="$(node_a --json add)"
 pairing_code="$(printf '%s' "$pairing_json" | json_string code)"
 [[ -n "$pairing_code" ]] || fail "Node A did not return a pairing code"
@@ -133,21 +133,21 @@ reused_code="$(node_a --json add | json_string code)"
 node_b --json --timeout 30s add "$pairing_code" >/dev/null
 wait_for "Node A pairing" '"pairedDevices":1' node_a --json status
 
-printf '2/7 automatic file delivery and hash verification\n'
+printf '2/8 automatic file delivery and hash verification\n'
 dd if=/dev/urandom of="$test_root/auto.bin" bs=1M count=8 status=none
 auto_json="$(node_a --json --timeout 60s send "$test_root/auto.bin" --to Node-B)"
 auto_id="$(printf '%s' "$auto_json" | json_string transferId)"
 auto_received="$(node_b --json transfers "$auto_id" | json_string savedPath)"
 assert_same_file "$test_root/auto.bin" "$auto_received"
 
-printf '3/7 bidirectional delivery\n'
+printf '3/8 bidirectional delivery\n'
 printf 'reply from node b\n' >"$test_root/reply.txt"
 reply_json="$(node_b --json --timeout 60s send "$test_root/reply.txt" --to Node-A)"
 reply_id="$(printf '%s' "$reply_json" | json_string transferId)"
 reply_received="$(node_a --json transfers "$reply_id" | json_string savedPath)"
 assert_same_file "$test_root/reply.txt" "$reply_received"
 
-printf '4/7 folder tree and exclusion\n'
+printf '4/8 folder tree and exclusion\n'
 mkdir -p "$test_root/project/src" "$test_root/project/empty" "$test_root/project/.git"
 printf 'package main\n' >"$test_root/project/src/main.go"
 printf 'excluded\n' >"$test_root/project/.git/secret"
@@ -157,7 +157,7 @@ folder_received="$(node_b --json transfers "$folder_id" | json_string savedPath)
 [[ -f "$folder_received/src/main.go" && -d "$folder_received/empty" && ! -e "$folder_received/.git" ]] ||
   fail "received folder tree or exclusion is incorrect"
 
-printf '5/7 manual approval and rejection\n'
+printf '5/8 manual approval and rejection\n'
 node_b --json receive --ask Node-A >/dev/null
 printf 'approve me\n' >"$test_root/manual.txt"
 manual_json="$(node_a --json --background send "$test_root/manual.txt" --to Node-B)"
@@ -176,7 +176,7 @@ node_b --json receive "$reject_id" --reject >/dev/null
 wait_for "sender rejection state" '"status":"rejected"' node_a --json transfers "$reject_id"
 node_b --json receive --always Node-A >/dev/null
 
-printf '6/7 receiver restart and durable queue retry\n'
+printf '6/8 receiver restart and durable queue retry\n'
 stop_node_b
 printf 'queued while offline\n' >"$test_root/offline.txt"
 offline_json="$(node_a --json --background send "$test_root/offline.txt" --to Node-B)"
@@ -186,7 +186,7 @@ wait_for "offline transfer recovery" '"status":"completed"' node_a --json transf
 offline_received="$(node_b --json transfers "$offline_id" | json_string savedPath)"
 assert_same_file "$test_root/offline.txt" "$offline_received"
 
-printf '7/7 relay interruption and automatic reconnect\n'
+printf '7/8 relay interruption and automatic reconnect\n'
 stop_relay
 printf 'queued while relay is offline\n' >"$test_root/relay-retry.txt"
 relay_json="$(node_a --json --background send "$test_root/relay-retry.txt" --to Node-B)"
@@ -197,7 +197,20 @@ wait_for "relay reconnect transfer" '"status":"completed"' node_a --json transfe
 relay_received="$(node_b --json transfers "$relay_id" | json_string savedPath)"
 assert_same_file "$test_root/relay-retry.txt" "$relay_received"
 
+printf '8/8 unilateral revocation reconciles on next contact\n'
+node_b --json remove Node-A >/dev/null
+stop_node_b
+start_node_b
+printf 'must not send after revocation\n' >"$test_root/revoked.txt"
+if revoked_json="$(node_a --json --timeout 10s send "$test_root/revoked.txt" --to Node-B)"; then
+  fail "send unexpectedly succeeded after peer revocation"
+fi
+[[ "$revoked_json" == *'"code":"device_revoked"'* ]] ||
+  fail "sender did not report device_revoked: $revoked_json"
+[[ "$(node_a --json devices)" == *'"devices":[]'* ]] ||
+  fail "sender retained the stale trusted device"
+
 node_a --json doctor | grep -q '"healthy":true' || fail "Node A doctor failed"
 node_b --json doctor | grep -q '"healthy":true' || fail "Node B doctor failed"
-printf 'PASS: real two-node pairing, transfer, policy, restart, reconnect, and hashes\n'
+printf 'PASS: real two-node pairing, transfer, policy, restart, reconnect, revocation, and hashes\n'
 printf 'Artifacts: %s\n' "$test_root"
