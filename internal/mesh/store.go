@@ -87,6 +87,9 @@ func (s *Store) Devices() []Device {
 	defer s.mu.RUnlock()
 	devices := make([]Device, 0, len(s.devices))
 	for _, device := range s.devices {
+		if device.Revoked {
+			continue
+		}
 		copy := device
 		copy.RelationshipKey = ""
 		devices = append(devices, copy)
@@ -99,7 +102,22 @@ func (s *Store) Device(id string) (Device, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	d, ok := s.devices[id]
+	if ok && d.Revoked {
+		return Device{}, false
+	}
 	return d, ok
+}
+
+func (s *Store) RevokedDevices() []Device {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	devices := make([]Device, 0)
+	for _, device := range s.devices {
+		if device.Revoked {
+			devices = append(devices, device)
+		}
+	}
+	return devices
 }
 
 func (s *Store) ResolveDevice(query string) (Device, error) {
@@ -107,21 +125,30 @@ func (s *Store) ResolveDevice(query string) (Device, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if query == "" {
-		if len(s.devices) == 1 {
-			for _, device := range s.devices {
-				return device, nil
+		var match *Device
+		for _, device := range s.devices {
+			if device.Revoked {
+				continue
 			}
+			if match != nil {
+				return Device{}, &APIError{Code: "ambiguous_device", Message: "more than one trusted device is available; choose one with --to", Retryable: false}
+			}
+			copy := device
+			match = &copy
 		}
-		if len(s.devices) == 0 {
+		if match == nil {
 			return Device{}, &APIError{Code: "device_not_found", Message: "add a trusted device before sending", Retryable: false}
 		}
-		return Device{}, &APIError{Code: "ambiguous_device", Message: "more than one trusted device is available; choose one with --to", Retryable: false}
+		return *match, nil
 	}
-	if device, ok := s.devices[query]; ok {
+	if device, ok := s.devices[query]; ok && !device.Revoked {
 		return device, nil
 	}
 	var match *Device
 	for _, device := range s.devices {
+		if device.Revoked {
+			continue
+		}
 		if !strings.EqualFold(device.Name, query) {
 			continue
 		}
@@ -141,20 +168,48 @@ func (s *Store) PutDevice(device Device) error {
 	if device.DeviceID == "" || device.PublicKey == "" || device.RelationshipKey == "" {
 		return errors.New("device identity and relationship key are required")
 	}
+	device.Revoked = false
+	device.RevocationRoom = ""
+	device.RevokedAt = time.Time{}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	previous, existed := s.devices[device.DeviceID]
 	s.devices[device.DeviceID] = device
-	return s.writeDevicesLocked()
+	if err := s.writeDevicesLocked(); err != nil {
+		if existed {
+			s.devices[device.DeviceID] = previous
+		} else {
+			delete(s.devices, device.DeviceID)
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *Store) RevokeDevice(id string) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, ok := s.devices[id]; !ok {
+	device, ok := s.devices[id]
+	if !ok || device.Revoked {
 		return false, nil
 	}
-	delete(s.devices, id)
-	return true, s.writeDevicesLocked()
+	room, err := controlRoom(device.RelationshipKey, s.identity.DeviceID)
+	if err != nil {
+		return false, err
+	}
+	trusted := device
+	device.RelationshipKey = ""
+	device.Capabilities = nil
+	device.ReceivePolicy = nil
+	device.Revoked = true
+	device.RevocationRoom = room
+	device.RevokedAt = time.Now().UTC()
+	s.devices[id] = device
+	if err := s.writeDevicesLocked(); err != nil {
+		s.devices[id] = trusted
+		return false, err
+	}
+	return true, nil
 }
 
 func (s *Store) RenameDevice(id, name string) (Device, error) {
@@ -165,7 +220,7 @@ func (s *Store) RenameDevice(id, name string) (Device, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	device, ok := s.devices[id]
-	if !ok {
+	if !ok || device.Revoked {
 		return Device{}, &APIError{Code: "device_not_found", Message: "trusted device was not found", Retryable: false}
 	}
 	device.Name = name
@@ -185,7 +240,7 @@ func (s *Store) AuthorizeReceive(id string, maxBytes int64, allowFolders bool) (
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	device, ok := s.devices[id]
-	if !ok {
+	if !ok || device.Revoked {
 		return Device{}, &APIError{Code: "device_not_found", Message: "trusted device was not found", Retryable: false}
 	}
 	device.ReceivePolicy = &ReceivePolicy{
@@ -207,7 +262,7 @@ func (s *Store) RequireReceiveApproval(id string) (Device, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	device, ok := s.devices[id]
-	if !ok {
+	if !ok || device.Revoked {
 		return Device{}, &APIError{Code: "device_not_found", Message: "trusted device was not found", Retryable: false}
 	}
 	device.ReceivePolicy = &ReceivePolicy{AutoReceive: false}
@@ -423,6 +478,16 @@ func (s *Store) loadDevices() error {
 	}
 	migrated := false
 	for _, device := range devices {
+		if device.Revoked {
+			if device.DeviceID == "" || device.PublicKey == "" || device.RevocationRoom == "" {
+				return errors.New("devices file contains an incomplete revocation record")
+			}
+			device.RelationshipKey = ""
+			device.Capabilities = nil
+			device.ReceivePolicy = nil
+			s.devices[device.DeviceID] = device
+			continue
+		}
 		if device.DeviceID == "" || device.RelationshipKey == "" {
 			return errors.New("devices file contains an incomplete trust record")
 		}

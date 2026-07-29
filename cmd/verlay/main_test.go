@@ -91,6 +91,7 @@ func TestAgentSkillAndSchemaExposeAutomationContract(t *testing.T) {
 		"`waiting_for_peer`; that is not a completed pairing",
 		"Only report an incoming item as received when its status is",
 		"cannot wake an idle agent",
+		"`device_revoked`",
 	} {
 		if !strings.Contains(skill, guidance) {
 			t.Fatalf("embedded skill omitted %q", guidance)

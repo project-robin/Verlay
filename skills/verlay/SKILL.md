@@ -123,6 +123,12 @@ device. Use `--background` only when the user wants to queue work without
 waiting. Never report a background result as delivered unless a later
 `status` shows `completed`.
 
+`devices` is the local trust list, not proof that the peer is online. The
+authenticated send handshake performs the mutual-trust check; do not add a
+separate ping. If it returns `device_revoked`, explain that the peer removed
+the relationship, that Verlay removed the stale local entry, and that the
+devices must pair again before sending.
+
 ## Receive transfers
 
 Trusted devices deliver into their bounded inbox automatically through the

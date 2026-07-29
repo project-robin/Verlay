@@ -44,6 +44,9 @@ type Device struct {
 	ReceivePolicy   *ReceivePolicy `json:"receivePolicy,omitempty"`
 	PairedAt        time.Time      `json:"pairedAt"`
 	LastSeenAt      time.Time      `json:"lastSeenAt,omitempty"`
+	Revoked         bool           `json:"revoked,omitempty"`
+	RevocationRoom  string         `json:"revocationRoom,omitempty"`
+	RevokedAt       time.Time      `json:"revokedAt,omitempty"`
 }
 
 type ReceivePolicy struct {

@@ -248,6 +248,11 @@ Revoke the relationship completely:
 verlay --json remove EDITOR_TWO
 ```
 
+Removal takes effect locally immediately. If the other device still has the
+old relationship, it learns that the relationship was revoked on its next
+authenticated contact, removes the stale entry, and requires pairing again.
+An offline device cannot be checked until it reconnects.
+
 ## Verlay Mobile beta
 
 The Android app embeds the same Go Verlay runtime used by Linux. It can:

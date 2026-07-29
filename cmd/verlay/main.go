@@ -556,7 +556,11 @@ func waitForTransfer(opts options, paths meshcore.Paths, transferID string) int 
 			return printSuccess(opts.json, envelope.Data)
 		}
 		if status == "failed" || status == "rejected" || status == "cancelled" {
-			return printFailure(opts.json, &meshcore.APIError{Code: "transfer_failed", Message: dataString(envelope.Data, "message"), Retryable: status == "failed"}, 5)
+			code := dataString(envelope.Data, "errorCode")
+			if code == "" {
+				code = "transfer_" + status
+			}
+			return printFailure(opts.json, &meshcore.APIError{Code: code, Message: dataString(envelope.Data, "message"), Retryable: false}, 5)
 		}
 		time.Sleep(250 * time.Millisecond)
 	}

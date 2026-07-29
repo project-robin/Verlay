@@ -92,6 +92,58 @@ func TestControlChannelPinsPairedIdentity(t *testing.T) {
 	}
 }
 
+func TestControlChannelReconcilesUnilateralRevocation(t *testing.T) {
+	storeA, storeB, deviceA, deviceB := pairedTestStores(t)
+	if revoked, err := storeB.RevokeDevice(deviceA.DeviceID); err != nil || !revoked {
+		t.Fatalf("revoke device: revoked=%v err=%v", revoked, err)
+	}
+	managerB, err := NewControlManager(storeB, func(context.Context, Device, ControlRequest) ControlResponse {
+		t.Fatal("revoked peer reached the control handler")
+		return ControlResponse{}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	managerA, err := NewControlManager(storeA, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer managerA.Close()
+	defer managerB.Close()
+	clientConnection, serverConnection := net.Pipe()
+	serverReady := make(chan struct{})
+	var serverCalls atomic.Int32
+	managerB.connector = func(ctx context.Context, _, _ string) (net.Conn, error) {
+		if serverCalls.Add(1) == 1 {
+			close(serverReady)
+			return serverConnection, nil
+		}
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	managerA.connector = func(context.Context, string, string) (net.Conn, error) {
+		return clientConnection, nil
+	}
+	managerB.Start()
+	select {
+	case <-serverReady:
+	case <-time.After(2 * time.Second):
+		t.Fatal("revoked peer listener did not start")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	response, err := managerA.Send(ctx, deviceB, ControlRequest{RequestID: "request-1", Type: "ping", Payload: json.RawMessage(`{}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.OK || response.Error == nil || response.Error.Code != "device_revoked" || response.Error.Retryable {
+		t.Fatalf("response = %#v, want non-retryable device_revoked", response)
+	}
+	if _, ok := storeA.Device(deviceB.DeviceID); ok {
+		t.Fatal("sender retained a device after authenticated revocation")
+	}
+}
+
 func TestControlHandshakeDisconnectIsRetryable(t *testing.T) {
 	storeA, _, _, deviceB := pairedTestStores(t)
 	managerA, err := NewControlManager(storeA, nil)
